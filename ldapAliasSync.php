@@ -172,7 +172,7 @@ class ldapAliasSync extends rcube_plugin {
 
             $filter = $this->filter;
 
-            # Replace place holders in the LDAP filter with login data
+            # Replace place holders in the LDAP base DN with login data
             $ldap_basedn = str_replace('%login', $login, $base_dn);
             $ldap_basedn = str_replace('%local', $local_part, $ldap_basedn);
             $ldap_basedn = str_replace('%domain', $domain_part, $ldap_basedn);
