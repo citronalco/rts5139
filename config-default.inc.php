@@ -45,6 +45,10 @@ $rcmail_config['ldapAliasSync'] = array(
         'bind_pw'    => 'secret',
         
         # LDAP search base (required)
+        # - Use '%login' as a place holder for the login name
+        # - Use '%local' as a place holder for the login name local part
+        # - Use '%domain' as a place holder for the login name domain part (/'search_domain', if not given or replaced)
+        # - Use '%email' as a place holder for the email address ('%local'@'%domain')
         'base_dn'    => 'ou=users,dc=example,dc=com',
         
         # LDAP search filter (required)
