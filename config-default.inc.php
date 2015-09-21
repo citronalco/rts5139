@@ -7,7 +7,7 @@
 $rcmail_config['ldapAliasSync'] = array(
     // Mail parameters
     'mail' => array(
-        # Domain to use for LDAP searches (optional)
+        # Domain to use for LDAP searches (required, if 'replace_domain' is true)
         # If no login name is given (or 'replace_domain' is true),
         # the domain part for the LDAP filter is set to this value
         # Default: none
@@ -20,13 +20,13 @@ $rcmail_config['ldapAliasSync'] = array(
         # Default: false
         #'replace_domain'    => false,
         
-        # Dovecot master user seperator (optional)
-        # If you use the dovecot impersonation feature, this seperator will be used
+        # Dovecot master user separator (optional)
+        # If you use the dovecot impersonation feature, this separator will be used
         # in order to determine the actual login name.
         # Set it to the same character if using this feature, otherwise you can also
         # leave it empty.
         # Default: none
-        #'dovecot_seperator' => '',
+        #'dovecot_separator' => '',
     ),
 
     // LDAP parameters
@@ -93,24 +93,27 @@ $rcmail_config['ldapAliasSync'] = array(
         'attr_mail'  => 'mail',
         
         # LDAP e-mail local part attribute (required, if 'mail_by' is 'dn', 'memberof' or 'static')
-        #'attr_local' => 'uid',
+        # Default: none
+        #'attr_local' => '',
         
         # LDAP e-mail domain part attribute (required, if 'mail_by' is 'dn' or 'memberof')
-        #'attr_dom'   => 'dc'
+        # Default: none
+        #'attr_dom'   => ''
         
         # Static domain to append to local parts (required, if 'mail_by' is 'static')
-        #'domain_static'  => 'example.com',
+        # Default: none
+        #'domain_static'  => '',
 
         # Users with one of the following domains will be ignored (optional)
         # Default: none
         #'ignore_domains' => array(),
         
         # How to handle non-domain attributes in a DN (optional)
-        # Set to true, if you want to break up the search (e.g. uid=u1,dc=mail,dc=de,ou=dom,dc=example,dc=com --> mail.de)
-        # Set to false, if you want to skip non-domain attributes (e.g. uid=u1,dc=mail,dc=de,ou=dom,dc=example,dc=com --> mail.de.example.com)
-        # Possible values: true, false
-        # Default: true
-        #'break_dom'     => true,
+        # Set to 'break', if you want to stop the search (e.g. uid=u1,dc=mail,dc=de,ou=dom,dc=example,dc=com --> mail.de)
+        # Set to 'skip', if you want to skip non-domain attributes (e.g. uid=u1,dc=mail,dc=de,ou=dom,dc=example,dc=com --> mail.de.example.com)
+        # Possible values: 'break', 'skip'
+        # Default: 'break'
+        #'non_domain_attr'     => 'break',
 
         ### The following attributes can be fetched from LDAP in order to provide additional identity information
         
@@ -136,7 +139,7 @@ $rcmail_config['ldapAliasSync'] = array(
     ),
     
     # 'alias_search' holds all config variables for the alias search
-    'user_search' => array(
+    'alias_search' => array(
         # LDAP search base (required)
         # - Use '%login' as a place holder for the login name
         # - Use '%local' as a place holder for the login name local part
@@ -181,24 +184,27 @@ $rcmail_config['ldapAliasSync'] = array(
         'attr_mail'  => 'mail',
         
         # LDAP e-mail local part attribute (required, if 'mail_by' is 'dn', 'memberof' or 'static')
-        #'attr_local' => 'uid',
+        # Default: none
+        #'attr_local' => '',
         
         # LDAP e-mail domain part attribute (required, if 'mail_by' is 'dn' or 'memberof')
-        #'attr_dom'   => 'dc'
+        # Default: none
+        #'attr_dom'   => ''
         
         # Static domain to append to local parts (required, if 'mail_by' is 'static')
-        #'domain_static'  => 'example.com',
+        # Default: none
+        #'domain_static'  => '',
 
         # Users with one of the following domains will be ignored (optional)
         # Default: none
         #'ignore_domains' => array(),
 
         # How to handle non-domain attributes in a DN (optional)
-        # Set to true, if you want to break up the search (e.g. uid=u1,dc=mail,dc=de,ou=dom,dc=example,dc=com --> mail.de)
-        # Set to false, if you want to skip non-domain attributes (e.g. uid=u1,dc=mail,dc=de,ou=dom,dc=example,dc=com --> mail.de.example.com)
-        # Possible values: true, false
-        # Default: true
-        #'break_dom'     => true,
+        # Set to 'break', if you want to stop the search (e.g. uid=u1,dc=mail,dc=de,ou=dom,dc=example,dc=com --> mail.de)
+        # Set to 'skip', if you want to skip non-domain attributes (e.g. uid=u1,dc=mail,dc=de,ou=dom,dc=example,dc=com --> mail.de.example.com)
+        # Possible values: 'break', 'skip'
+        # Default: 'break'
+        #'non_domain_attr'     => 'break',
 
         ### The following attributes can be fetched from LDAP in order to provide additional identity information
         
@@ -223,16 +229,18 @@ $rcmail_config['ldapAliasSync'] = array(
         #'attr_sig'   => '',
     ),
 
-    # Update identity (optional)
-    # Set to true, if you want update an existing identity with the same e-mail address in the database
-    # Possible values: true, false
-    # Default: false
-    #'update_identity' => false,
-
-    # Update only nonempty fields of the identity (optional)
-    # Set to false if you want to also update empty fields of the identity.
-    # Possible values: true, false
-    # Default: true
-    #'update_only_nonempty_fields' => true
+    'update' => array(
+        # Update identity (optional)
+        # Set to true, if you want update an existing identity with the same e-mail address in the database
+        # Possible values: true, false
+        # Default: false
+        #'update_identity' => false,
+    
+        # Update empty fields of the identity (optional)
+        # Set to true, if you want to also update empty fields of the identity.
+        # Possible values: true, false
+        # Default: false
+        #'update_empty_fields' => false
+    ),
 );
 ?>
