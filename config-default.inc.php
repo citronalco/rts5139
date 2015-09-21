@@ -31,14 +31,22 @@ $rcmail_config['ldapAliasSync'] = array(
 
     // LDAP parameters
     'ldap' => array(
-        # LDAP server address (required)
-        'server'     => 'ldap://localhost',
+        # LDAP connection scheme (optional)
+        # Possible values: 'ldap', 'ldaps', 'ldapi'
+        # Default: 'ldap'
+        #'scheme'    => 'ldap',
+        
+        # LDAP server address (optional)
+        # Default: 'localhost'
+        #'server'    => 'localhost',
         
         # LDAP Bind DN (requried, if no anonymous read rights are set for the accounts)
-        'bind_dn'    => 'cn=mail,ou=services,dc=example,dc=com',
+        # Default: none
+        #'bind_dn'   => '',
         
         # Bind password (required, if the bind DN needs to authenticate)
-        'bind_pw'    => 'secret',
+        # Default: none
+        #'bind_pw'   => '',
     ),
     
     # 'user_search' holds all config variables for the user search
