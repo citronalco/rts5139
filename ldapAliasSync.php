@@ -48,9 +48,12 @@ class ldapAliasSync extends rcube_plugin {
             $this->app = rcmail::get_instance();
             $this->config = $this->app->config->get('ldapAliasSync');
 
-            # Load LDAP & mail config at once
-            $this->ldap = $this->config['ldap'];
-            $this->mail = $this->config['mail'];
+            # Load plugin config at once
+            $this->cfg_ldap 		= check_ldap_config($this->config['ldap']);
+            $this->cfg_mail 		= check_mail_config($this->config['mail']);
+            $this->cfg_user_search 	= check_user_config($this->config['user_search']);
+            $this->cfg_alias_search 	= check_alias_config($this->config['alias_search']);
+            
 
             # Load LDAP configs
             $this->server       = $this->ldap['server'];
@@ -114,13 +117,151 @@ class ldapAliasSync extends rcube_plugin {
                 write_log('ldapAliasSync', $log);
             }
         } catch ( Exception $exc ) {
-            write_log('ldapAliasSync', 'Fail to initialise: '.$exc->getMessage());
+            write_log('ldapAliasSync', 'Failed to initialise: '.$exc->getMessage());
         }
 
-        if ( $this->initialised )
+        if ( $this->initialised ) {
             write_log('ldapAliasSync', 'Initialised');
-
+        }
     }
+    
+    function check_ldap_config($config) {
+    	$SCHEMES = array('ldap', 'ldaps', 'ldapi');
+   	
+   	# Set default values for empty config parameters
+    	(! $config['scheme']) : $config['scheme'] = 'ldap';
+    	(! $config['server']) : $config['server'] = 'localhost';
+    	(! $config['bind_dn']) : $config['bind_dn'] = '';
+    	(! $config['bind_pw']) : $config['bind_pw'] = '';
+    	
+    	# Check parameters with fixed value set
+    	(! in_array($config['scheme'], $SCHEMES)) : throw new Exception('[ldap] scheme "'.$config['scheme'].'" is invalid');
+
+    	return $config;
+    }
+    
+    function check_mail_config($config) {
+    	# Set default values for empty config parameters
+    	(! $config['search_domain']) : $config['search_domain'] = '';
+    	(! $config['replace_domain']) : $config['replace_domain'] = false;
+    	(! $config['dovecot_separator']) : $config['dovecot_separator'] = '';
+    	
+    	# Check parameter combinations
+    	($config['replace_domain'] && ! $config['search_domain']) : throw new Exception('[mail] search_domain must not be initial, if replace_domain is set to "true"!');
+
+    	return $config;
+    }
+    
+    function check_user_config($config) {
+    	$SCOPES   = array('base', 'one', 'sub');
+    	$DEREFS   = array('never', 'find', 'search', 'always');
+    	$MAIL_BYS = array('attribute', 'dn', 'memberof', 'static');
+    	$NDATTRS  = array('break', 'skip');
+    	
+    	# Set default values for empty config parameters
+    	(! $config['base_dn']) : $config['base_dn'] = '';
+    	(! $config['filter']) : $config['filter'] = '(objectClass=*)';
+    	(! $config['scope']) : $config['scope'] = 'base';
+    	(! $config['deref']) : $config['deref'] = 'never';
+    	(! $config['mail_by']) : $config['mail_by'] = 'attribute';
+    	(! $config['attr_mail']) : $config['attr_mail'] = 'mail' ? $config['attr_mail'] = strtolower($config['attr_mail']);
+    	(! $config['attr_local']) : $config['attr_local'] = '' ? $config['attr_local'] = strtolower($config['attr_local']);
+    	(! $config['attr_dom']) : $config['attr_dom'] = '' ? $config['attr_dom'] = strtolower($config['attr_dom']);
+    	(! $config['domain_static']) : $config['domain_static'] = '';
+    	(! $config['ignore_domains']) : $config['ignore_domains'] = array();
+    	(! $config['non_domain_attr']) : $config['non_domain_attr'] = 'break';
+    	(! $config['attr_name']) : $config['attr_name'] = '' ? $config['attr_name'] = strtolower($config['attr_name']);
+    	(! $config['attr_org']) : $config['attr_org'] = '' ? $config['attr_org'] = strtolower($config['attr_org']);
+    	(! $config['attr_reply']) : $config['attr_reply'] = '' ? $config['attr_reply'] = strtolower($config['attr_reply']);
+    	(! $config['attr_bcc']) : $config['attr_bcc'] = '' ? $config['attr_bcc'] = strtolower($config['attr_bcc']);
+    	(! $config['attr_sig']) : $config['attr_sig'] = '' ? $config['attr_sig'] = strtolower($config['attr_sig']);
+    	
+    	# Check on empty parameters
+    	(! $config['base_dn']) : throw new Exception('[user_search] base_dn must not be initial!');
+
+    	# Check parameters with fixed value set
+    	(! in_array($config['scope'], $SCOPES)) : throw new Exception('[user_search] scope "'.$config['scope'].'" is invalid');
+    	(! in_array($config['deref'], $DEREFS)) : throw new Exception('[user_search] deref "'.$config['deref'].'" is invalid');
+    	(! in_array($config['mail_by'], $MAIL_BYS)) : throw new Exception('[user_search] mail_by "'.$config['mail_by'].'" is invalid');
+    	(! in_array($config['non_domain_attr'], $NDATTRS)) : throw new Exception('[user_search] non_domain_attr "'.$config['non_domain_attr'].'" is invalid');
+
+    	# Check parameter combinations
+    	($config['mail_by'] == 'attribute' && ! $config['attr_mail']) : throw new Exception('[user_search] attr_mail must not be initial, if mail_by is set to "attribute"!');
+    	($config['mail_by'] == 'dn' && ! $config['attr_local']) : throw new Exception('[user_search] attr_local must not be initial, if mail_by is set to "dn"!');
+    	($config['mail_by'] == 'dn' && ! $config['attr_dom']) : throw new Exception('[user_search] attr_dom must not be initial, if mail_by is set to "dn"!');
+    	($config['mail_by'] == 'memberof' && ! $config['attr_local']) : throw new Exception('[user_search] attr_local must not be initial, if mail_by is set to "memberof"!');
+    	($config['mail_by'] == 'memberof' && ! $config['attr_dom']) : throw new Exception('[user_search] attr_dom must not be initial, if mail_by is set to "memberof"!');
+    	($config['mail_by'] == 'static' && ! $config['attr_local']) : throw new Exception('[user_search] attr_local must not be initial, if mail_by is set to "static"!');
+    	($config['mail_by'] == 'static' && ! $config['domain_static']) : throw new Exception('[user_search] domain_static must not be initial, if mail_by is set to "static"!');
+    	
+    	return $config;
+    }
+    
+function check_alias_config($config) {
+    	$SCOPES   = array('base', 'one', 'sub');
+    	$DEREFS   = array('never', 'find', 'search', 'always');
+    	$MAIL_BYS = array('attribute', 'dn', 'memberof', 'static');
+    	$NDATTRS  = array('break', 'skip');
+    	
+    	# Set default values for empty config parameters
+    	(! $config['base_dn']) : $config['base_dn'] = '';
+    	(! $config['filter']) : $config['filter'] = '(objectClass=*)';
+    	(! $config['scope']) : $config['scope'] = 'base';
+    	(! $config['deref']) : $config['deref'] = 'never';
+    	(! $config['mail_by']) : $config['mail_by'] = 'attribute';
+    	(! $config['attr_mail']) : $config['attr_mail'] = 'mail' ? $config['attr_mail'] = strtolower($config['attr_mail']);
+    	(! $config['attr_local']) : $config['attr_local'] = '' ? $config['attr_local'] = strtolower($config['attr_local']);
+    	(! $config['attr_dom']) : $config['attr_dom'] = '' ? $config['attr_dom'] = strtolower($config['attr_dom']);
+    	(! $config['domain_static']) : $config['domain_static'] = '';
+    	(! $config['ignore_domains']) : $config['ignore_domains'] = array();
+    	(! $config['non_domain_attr']) : $config['non_domain_attr'] = 'break';
+    	(! $config['attr_name']) : $config['attr_name'] = '' ? $config['attr_name'] = strtolower($config['attr_name']);
+    	(! $config['attr_org']) : $config['attr_org'] = '' ? $config['attr_org'] = strtolower($config['attr_org']);
+    	(! $config['attr_reply']) : $config['attr_reply'] = '' ? $config['attr_reply'] = strtolower($config['attr_reply']);
+    	(! $config['attr_bcc']) : $config['attr_bcc'] = '' ? $config['attr_bcc'] = strtolower($config['attr_bcc']);
+    	(! $config['attr_sig']) : $config['attr_sig'] = '' ? $config['attr_sig'] = strtolower($config['attr_sig']);
+    	
+    	# Check on empty parameters
+    	(! $config['base_dn']) : throw new Exception('[alias_search] base_dn must not be initial!');
+
+    	# Check parameters with fixed value set
+    	(! in_array($config['scope'], $SCOPES)) : throw new Exception('[alias_search] scope "'.$config['scope'].'" is invalid');
+    	(! in_array($config['deref'], $DEREFS)) : throw new Exception('[alias_search] deref "'.$config['deref'].'" is invalid');
+    	(! in_array($config['mail_by'], $MAIL_BYS)) : throw new Exception('[alias_search] mail_by "'.$config['mail_by'].'" is invalid');
+    	(! in_array($config['non_domain_attr'], $NDATTRS)) : throw new Exception('[alias_search] non_domain_attr "'.$config['non_domain_attr'].'" is invalid');
+
+    	# Check parameter combinations
+    	($config['mail_by'] == 'attribute' && ! $config['attr_mail']) : throw new Exception('[alias_search] attr_mail must not be initial, if mail_by is set to "attribute"!');
+    	($config['mail_by'] == 'dn' && ! $config['attr_local']) : throw new Exception('[alias_search] attr_local must not be initial, if mail_by is set to "dn"!');
+    	($config['mail_by'] == 'dn' && ! $config['attr_dom']) : throw new Exception('[alias_search] attr_dom must not be initial, if mail_by is set to "dn"!');
+    	($config['mail_by'] == 'memberof' && ! $config['attr_local']) : throw new Exception('[alias_search] attr_local must not be initial, if mail_by is set to "memberof"!');
+    	($config['mail_by'] == 'memberof' && ! $config['attr_dom']) : throw new Exception('[alias_search] attr_dom must not be initial, if mail_by is set to "memberof"!');
+    	($config['mail_by'] == 'static' && ! $config['attr_local']) : throw new Exception('[alias_search] attr_local must not be initial, if mail_by is set to "static"!');
+    	($config['mail_by'] == 'static' && ! $config['domain_static']) : throw new Exception('[alias_search] domain_static must not be initial, if mail_by is set to "static"!');
+    	
+    	return $config;
+    }
+	function get_domain_name( $dn, $attr, $break = true ) {
+    		$found = false;
+		$domain = '';
+
+		$dn_parts = explode(',', $dn);
+
+		foreach( $dn_parts as $dn_part ) {
+			$objs = explode('=', $dn_part);
+			if ($objs[0] == $attr) {
+				$found = true;
+				if ( strlen( $domain ) == 0 ) {
+					$domain = $objs[1];
+				} else {
+					$domain .= ".".$objs[1];
+				}
+			} elseif ( $found == true && $break == true ) {
+				break;
+			}
+		}
+		return $domain;
+	}
 
     /**
      * login_after
