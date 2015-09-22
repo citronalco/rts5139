@@ -16,11 +16,12 @@ class ldapAliasSync extends rcube_plugin {
 	private $rc_user;
 
 	// Config variables
-	private $config    = array();
-	private $cfg_ldap  = array();
-	private $cfg_mail  = array();
-	private $cfg_user  = array();
-	private $cfg_alias = array();
+	private $config      = array();
+	private $cfg_ldap    = array();
+	private $cfg_mail    = array();
+	private $cfg_user    = array();
+	private $cfg_alias   = array();
+	private $cfg_general = array();
 
 	// Plugin variables
 	private $ldap_con;
@@ -29,7 +30,7 @@ class ldapAliasSync extends rcube_plugin {
 	// Plugin initialization
 	function init() {
 		try {
-			write_log('ldapAliasSync', 'Initialising');
+			$this->log_debug('Initialising...');
 
 			// Load general roundcube config settings
 			$this->load_config('config.inc.php');
@@ -38,21 +39,23 @@ class ldapAliasSync extends rcube_plugin {
 			// Load plugin config settings
 			$this->config = $this->app->config->get('ldapAliasSync');
 
-			$this->cfg_ldap	  = $this->check_ldap_config($this->config['ldap']);
-			$this->cfg_mail	  = $this->check_mail_config($this->config['mail']);
-			$this->cfg_user	  = $this->check_user_config($this->config['user_search']);
-			$this->cfg_alias  = $this->check_alias_config($this->config['alias_search']);
-			$this->cfg_update = $this->check_update_config($this->config['update']);
+			$this->cfg_ldap	   = $this->check_ldap_config($this->config['ldap']);
+			$this->cfg_mail	   = $this->check_mail_config($this->config['mail']);
+			$this->cfg_user	   = $this->check_user_config($this->config['user_search']);
+			$this->cfg_alias   = $this->check_alias_config($this->config['alias_search']);
+			$this->cfg_general = $this->check_general_config($this->config['general']);
+			$this->log_debug('Configuration successfully loaded');
 
 			// register hook
 			$this->add_hook('login_after', array($this, 'login_after'));
 			$this->initialised = true;
+			$this->log_debug('Plugin Hook \'login_after\' set');
 		} catch ( Exception $exc ) {
-			write_log('ldapAliasSync', 'Failed to initialise: '.$exc->getMessage());
+			$this->log_error('Failed to initialise: '.$exc->getMessage());
 		}
 
 		if ( $this->initialised ) {
-			write_log('ldapAliasSync', 'Initialised');
+			$this->log_info('Plugin initialised');
 		}
 	}
 
@@ -73,17 +76,23 @@ class ldapAliasSync extends rcube_plugin {
 		try {
 			$this->rc_user = rcmail::get_instance()->user;
 			$login = $this->get_login_info($this->rc_user->get_username('mail'), $this->cfg_mail);
+			$this->log_debug("User information: %login: ".$login['login'].", %local: ".$login['local'].", %domain: ".$login['domain'].", %email: ".$login['email']);
 
 			$this->ldap_con  = $this->initialize_ldap($this->cfg_ldap);
+			$this->log_debug("LDAP connection established");
 
 			$identities = $this->fetch_identities($login);
+			$this->log_info("Fetched ".count($identities)." identities");
 
 			$this->sync_identities_db($identities);
+			$this->log_info("Identities in DB synchronized");
 		} catch ( Exception $exc ) {
-			write_log('ldapAliasSync', 'Runtime error: '.$exc->getMessage());
+			$this->log_error('Runtime error: '.$exc->getMessage());
 		}
 
 		ldap_close($this->ldap_con);
+		$this->log_debug("LDAP connection closed");
+
 		return $args;
 	}
 
@@ -97,6 +106,7 @@ class ldapAliasSync extends rcube_plugin {
 		$con = ldap_connect($uri);
 
 		if ( is_resource($con) ) {
+			$this->log_debug("LDAP resource: ".$uri);
 			ldap_set_option($con, LDAP_OPT_PROTOCOL_VERSION, 3);
 		} else {
 			throw new Exception(sprintf("Connection to the server failed: (Error=%s)", ldap_errno($con)));
@@ -111,6 +121,8 @@ class ldapAliasSync extends rcube_plugin {
 
 		if ( ! $bound ) {
 			throw new Exception(sprintf("Bind to server '%s' failed. Con: (%s), Error: (%s)", $this->cfg_ldap['server'], $con, ldap_errno($con)));
+		} else {
+			$this->log_debug("LDAP Bind successfull");
 		}
 
 		return $con;
@@ -160,11 +172,14 @@ class ldapAliasSync extends rcube_plugin {
 
 		if ( count($ldap_users) == 0 ) {
 			throw new Exception(sprintf("User '%s' not found.", $login['login']));
+		} else {
+			$this->log_debug("Found ".count($ldap_users)." for user ".$login['login']);
 		}
 
 		foreach ( $ldap_users as $ldap_user ) {
 			array_push($identities, $ldap_user);
 			$aliases = $this->get_ldap_identities($login, $this->cfg_alias, $ldap_user['dn']);
+			$this->log_debug("Found ".count($aliases)." aliases");
 			foreach ( $aliases as $alias ) {
 				array_push($identities, $alias);
 			}
@@ -227,24 +242,26 @@ class ldapAliasSync extends rcube_plugin {
 			array_push($fields, 'memberof');
 		}
 
+		$this->log_debug("LDAP Query: base DN: ".$base_dn.", filter: ".$filter);
 		$result = @ldap_search($this->ldap_con, $base_dn, $filter, $fields, 0, 0, 0, $config['deref']);
 
 		if ( $result ) {
 			$entries = @ldap_get_entries($this->ldap_con, $result);
 		} else {
-			write_log('ldapAliasSync', "LDAP Error: ".ldap_errno($this->ldap_con).": ".ldap_error($this->ldap_con));
+			$this->log_warning("LDAP Message: ".ldap_errno($this->ldap_con).": ".ldap_error($this->ldap_con));
 		}
 
+		$this->log_debug("LDAP Query returned ".$entries['count']." entries.");
 		for ($i=0; $i<$entries['count']; $i++) {
 			$entry = null;
 			$entry = $entries["$i"];
 			$ids = $this->get_ids_from_obj($entry, $config);
-			write_log('ldapAliasSync', count($ids)." IDs fetched");
+			$this->log_debug(count($ids)." IDs fetched");
 			foreach ( $ids as $id ) {
 				array_push($identities, $id);
 			}
 		}
-		write_log('ldapAliasSync', count($identities)." IDs returned");
+		$this->log_debug(count($identities)." IDs fetched in total for this LDAP query");
 		return $identities;
 	}
 
@@ -263,7 +280,6 @@ class ldapAliasSync extends rcube_plugin {
 		if ( $config['attr_name'] ) {
 			$ldap_temp = $ldap_id[$config['attr_name']];
 			$identity['name'] = $ldap_temp[0];
-			write_log('ldapAliasSync', 'Name: '.$identity['name']);
 		}
 
 		if ( $config['attr_org'] ) {
@@ -301,6 +317,11 @@ class ldapAliasSync extends rcube_plugin {
 						$domain = explode('@', $attr)[1];
 						if ( $domain && ! in_array( $domain, $config['ignore_domains']) ) {
 							$identity['email'] = $attr;
+							if ( ! $identity['name'] ) {
+								$identity['name'] = explode('@', $attr)[0];
+							}
+							array_push($identities, $identity);
+							$this->log_debug("Found address ".$identity['email']);
 						}
 					}
 				}
@@ -308,18 +329,19 @@ class ldapAliasSync extends rcube_plugin {
 			case 'dn':
 				$ldap_temp = $ldap_id[$config['attr_local']];
 				$local = $ldap_temp[0];
-				write_log('ldapAliasSync', 'Local: '.$local);
 				if ( $config['non_domain_attr'] == 'skip' ) {
 					$stop = false;
 				} else {
 					$stop = true;
 				}
 				$domain = $this->get_domain_name($ldap_id['dn'], $config['attr_dom'], $stop);
-				write_log('ldapAliasSync', 'Domain: '.$domain);
 				if ( $local && $domain && ! in_array($domain, $config['ignore_domains']) ) {
 					$identity['email'] = $local.'@'.$domain;
-					write_log('ldapAliasSync', 'E-Mail: '.$identity['email']);
+					if ( ! $identity['name'] ) {
+						$identity['name'] = $local;
+					}
 					array_push($identities, $identity);
+					$this->log_debug("Found address ".$identity['email']);
 				}
 				break;
 			case 'memberof':
@@ -335,7 +357,11 @@ class ldapAliasSync extends rcube_plugin {
 					$domain = $this->get_domain_name($memberof, $config['attr_dom'], $stop);
 					if ( $local && $domain && ! in_array($domain, $config['ignore_domains']) ) {
 						$identity['email'] = $local.'@'.$domain;
+						if ( ! $identity['name'] ) {
+							$identity['name'] = $local;
+						}
 						array_push($identities, $identity);
+						$this->log_debug("Found address ".$identity['email']);
 					}
 				}
 				break;
@@ -344,7 +370,11 @@ class ldapAliasSync extends rcube_plugin {
 				$local = $ldap_temp[0];
 				if ( $local && $config['domain_static'] && ! in_array($config['domain_static'], $config['ignore_domains']) ) {
 					$identity['email'] = $local.'@'.$config['domain_static'];
+					if ( ! $identity['name'] ) {
+						$identity['name'] = $local;
+					}
 					array_push($identities, $identity);
+					$this->log_debug("Found address ".$identity['email']);
 				}
 				break;
 		}
@@ -387,12 +417,13 @@ class ldapAliasSync extends rcube_plugin {
 			# Check which identities not yet contained in the database
 			foreach ( $identities as $identity ) {
 				$in_db = false;
+				unset($identity['dn']);
 
 				foreach ( $db_identities as $db_identity ) {
 					# email is our only comparison parameter
 					if( $db_identity['email'] == $identity['email'] ) {
-						if ( $this->cfg_update['update_existing'] ) {
-							if ( ! $this->cfg_update['update_empty_fields']) {
+						if ( $this->cfg_general['update_existing'] ) {
+							if ( ! $this->cfg_general['update_empty_fields']) {
 								foreach ($identity as $key => $value) {
 									if ( empty($identity[$key]) ) {
 										unset($identity[$key]);
@@ -400,6 +431,7 @@ class ldapAliasSync extends rcube_plugin {
 								}
 							}
 							$this->rc_user->update_identity ( $db_identity['identity_id'], $identity );
+							$this->log_info("Updated identity ".$identity['email']);
 						}
 						$in_db = true;
 						break;
@@ -408,6 +440,7 @@ class ldapAliasSync extends rcube_plugin {
 
 				if( !$in_db ) {
 					$this->rc_user->insert_identity( $identity );
+					$this->log_info("Inserted identity ".$identity['email']);
 				}
 			}
 
@@ -426,8 +459,31 @@ class ldapAliasSync extends rcube_plugin {
 				# If this identity does not exist in LDAP, delete it from database
 				if( !$in_ldap ) {
 					$this->rc_user->delete_identity($db_identity['identity_id']);
+					$this->log_warning("Deleted identity ".$db_identity['email']);
 				}
 			}
+		}
+	}
+
+	function log_error($msg) {
+		write_log('ldapAliasSync', "ERROR: ".$msg);
+	}
+
+	function log_warning($msg) {
+		if ( $this->cfg_general['log_level'] >= 1 ) {
+			write_log('ldapAliasSync', "WARNING: ".$msg);
+		}
+	}
+
+	function log_info($msg) {
+		if ( $this->cfg_general['log_level'] >= 2 ) {
+			write_log('ldapAliasSync', "INFO: ".$msg);
+		}
+	}
+
+	function log_debug($msg) {
+		if ( $this->cfg_general['log_level'] >= 3 ) {
+			write_log('ldapAliasSync', "DEBUG: ".$msg);
 		}
 	}
 
@@ -732,14 +788,40 @@ class ldapAliasSync extends rcube_plugin {
 		return $config;
 	}
 
-	function check_update_config($config) {
+	function check_general_config($config) {
+		$LOG_LEVELS = array(3, 2, 1, 0);
+
 		// Set default values for empty parameters
+		if (! $config['log_level']) {
+			$config['log_level'] = 'error';
+		}
 		if (! $config['update_existing']) {
 			$config['update_existing'] = false;
 		}
 		if (! $config['update_empty_fields']) {
-			$config['update_existing'] = false;
+			$config['update_empty_fields'] = false;
 		}
+
+                // Override values
+                switch ( $config['log_level'] ) {
+                        case 'debug':
+                                $config['log_level'] = 3;
+                                break;
+                        case 'info':
+                                $config['log_level'] = 2;
+                                break;
+                        case 'warning':
+                                $config['log_level'] = 1;
+                                break;
+                        case 'error':
+                                $config['log_level'] = 0;
+                                break;
+                }
+
+		// Check parameters with fixed value set
+                if (! in_array($config['log_level'], $LOG_LEVELS)) {
+                        throw new Exception('[general] log_level "'.$config['log_level'].'" is invalid');
+                }
 
 		return $config;
 	}

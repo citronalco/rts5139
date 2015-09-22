@@ -225,7 +225,13 @@ $rcmail_config['ldapAliasSync'] = array(
 		#'attr_sig' => '',
 	),
 
-	'update' => array(
+	'general' => array(
+		# Log level (optional)
+		# Set the level of log details to be logged by this plugin
+		# Possible values: 'error', 'warn', 'info', 'debug'
+		# Default: 'error'
+		#'log_level' => 'error',
+
 		# Update identity (optional)
 		# Set to true, if you want update an existing identity with the same e-mail address in the database
 		# Possible values: true, false
@@ -236,7 +242,7 @@ $rcmail_config['ldapAliasSync'] = array(
 		# Set to true, if you want to also update empty fields of the identity.
 		# Possible values: true, false
 		# Default: false
-		#'update_empty_fields' => false
+		#'update_empty_fields' => false,
 	),
 );
 ?>
