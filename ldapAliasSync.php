@@ -80,8 +80,8 @@ class ldapAliasSync extends rcube_plugin {
 
 			$identities = fetch_identities($login);
 			sync_identities_db($identities);
-		} catch(Exception $e) {
-			echo 'Caught exception: ',  $e->getMessage(), "\n";
+		} catch ( Exception $exc ) {
+			write_log('ldapAliasSync', 'Runtime error: '.$exc->getMessage());
 		}
 
 		return $args;
