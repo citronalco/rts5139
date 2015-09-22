@@ -39,6 +39,10 @@ $rcmail_config['ldapAliasSync'] = array(
         # LDAP server address (optional)
         # Default: 'localhost'
         #'server'    => 'localhost',
+
+	# LDAP server port (optional)
+	# Default: '389'
+	#'port'	     => '389',
         
         # LDAP Bind DN (requried, if no anonymous read rights are set for the accounts)
         # Default: none
@@ -66,12 +70,6 @@ $rcmail_config['ldapAliasSync'] = array(
         # - Use '%email' as a place holder for the email address ('%local'@'%domain')
         # Default: '(objectClass=*)'
         #'filter'     => '(objectClass=*)',
-        
-        # LDAP search scope (optional)
-        # Either search the base DN itself, a level below the base DN or the whole subtree
-        # Possible values: 'base', 'one', 'sub'
-        # Default: 'base'
-        #'scope'      => 'base',
         
         # LDAP alias derefencing (optional)
         # Possible values: never, search, find, always
@@ -158,12 +156,6 @@ $rcmail_config['ldapAliasSync'] = array(
         # Default: '(objectClass=*)'
         #'filter'     => '(objectClass=*)',
         
-        # LDAP search scope (optional)
-        # Either search the base DN itself, a level below the base DN or the whole subtree
-        # Possible values: 'base', 'one', 'sub'
-        # Default: 'base'
-        #'scope'      => 'base',
-        
         # LDAP alias derefencing (optional)
         # Possible values: never, search, find, always
         # Default: 'never'
@@ -234,7 +226,7 @@ $rcmail_config['ldapAliasSync'] = array(
         # Set to true, if you want update an existing identity with the same e-mail address in the database
         # Possible values: true, false
         # Default: false
-        #'update_identity' => false,
+        #'update_existing' => false,
     
         # Update empty fields of the identity (optional)
         # Set to true, if you want to also update empty fields of the identity.
