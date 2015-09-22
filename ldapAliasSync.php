@@ -201,7 +201,7 @@ class ldapAliasSync extends rcube_plugin {
 	}
 
 	function check_alias_config($config) {
-		$DEREFS   = array('never', 'find', 'search', 'always');
+		$DEREFS   = array($LDAP_DEREF_NEVER, $LDAP_DEREF_SEARCHING, $LDAP_DEREF_FINDING, $LDAP_DEREF_ALWAYS);
 		$MAIL_BYS = array('attribute', 'dn', 'memberof', 'static');
 		$NDATTRS  = array('stop', 'skip');
 
@@ -424,6 +424,7 @@ class ldapAliasSync extends rcube_plugin {
 		if ( $config['attr_name'] ) {
 			$ldap_temp = $ldap_id[$config['attr_name']];
 			$identity['name'] = $ldap_temp[0];
+			write_log('ldapAliasSync', 'Name: '.$identity['name']);
 		}
 
 		if ( $config['attr_org'] ) {
@@ -468,14 +469,17 @@ class ldapAliasSync extends rcube_plugin {
 			case 'dn':
 				$ldap_temp = $ldap_id[$config['attr_local']];
 				$local = $ldap_temp[0];
+				write_log('ldapAliasSync', 'Local: '.$local);
 				if ( $config['non_domain_attr'] == 'skip' ) {
 					$stop = false;
 				} else {
 					$stop = true;
 				}
 				$domain = $this->get_domain_name($ldap_id['dn'], $config['attr_dom'], $stop);
+				write_log('ldapAliasSync', 'Domain: '.$domain);
 				if ( $local && $domain && ! in_array($domain, $config['ignore_domains']) ) {
 					$identity['email'] = $local.'@'.$domain;
+					write_log('ldapAliasSync', 'E-Mail: '.$identity['email']);
 					array_push($identities, $identity);
 				}
 				break;
@@ -509,12 +513,13 @@ class ldapAliasSync extends rcube_plugin {
 	}
 
 	function get_ldap_identities($con, $login, $config, $dn) {
-		$base_dn = $config['base_dn'];
-		$filter  = $config['filter'];
-		$fields  = array();
-		$bound   = false;
-		$result  = null;
-		$entries = array();
+		$base_dn    = $config['base_dn'];
+		$filter     = $config['filter'];
+		$fields     = array();
+		$bound      = false;
+		$result     = null;
+		$entries    = array();
+		$identities = array();
 
 		// Prepare LDAP query base DN
 		$base_dn = str_replace('%login', $login['login'], $base_dn);
@@ -562,50 +567,55 @@ class ldapAliasSync extends rcube_plugin {
 		}
 
 		// Bind to server
-		if ( $config['bind_dn'] ){
-			$bound = ldap_bind($con, $config['bind_dn'], $config['bind_pw']);
+		if ( $this->cfg_ldap['bind_dn'] ){
+			$bound = @ldap_bind($con, $this->cfg_ldap['bind_dn'], $this->cfg_ldap['bind_pw']);
 		} else {
-			$bound = ldap_bind($con);
+			$bound = @ldap_bind($con);
                 }
 
 		if ( ! $bound ) {
 			throw new Exception(sprintf("Bind to server '%s' failed. Con: (%s), Error: (%s)", $this->cfg_ldap['server'], $con, ldap_errno($con)));
 		}
 
-		$result = ldap_search($con, $base_dn, $filter, $fields, 0, 0, 0, $config['deref']);
+		$result = @ldap_search($con, $base_dn, $filter, $fields, 0, 0, 0, $config['deref']);
 
 		if ( $result ) {
-			$entries = ldap_get_entries($con, $result);
+			$entries = @ldap_get_entries($con, $result);
+		} else {
+			write_log('ldapAliasSync', "LDAP Error: ".ldap_errno($con).": ".ldap_error($con));
 		}
 
 		ldap_close($con);
 
-		foreach ( $entries as $entry ) {
+		for ($i=0; $i<$entries['count']; $i++) {
+			$entry = null;
+			$entry = $entries["$i"];
 			$ids = $this->get_ids_from_obj($entry, $config);
+			write_log('ldapAliasSync', count($ids)." IDs fetched");
 			foreach ( $ids as $id ) {
 				array_push($identities, $id);
 			}
 		}
-
+		write_log('ldapAliasSync', count($identities)." IDs returned");
 		return $identities;
 	}
 
 	function fetch_identities($login) {
-		$users      = array();
-		$user       = array();
+		$ldap_users = array();
+		$ldap_user  = array();
 		$aliases    = array();
 		$alias      = array();
 		$identities = array();
 
-		$users = $this->get_ldap_identities($this->ldap_con, $login, $this->cfg_user, '');
+		$ldap_users = $this->get_ldap_identities($this->ldap_con, $login, $this->cfg_user, '');
 
-		if ( $identities['count'] = 0 ) {
+		if ( count($ldap_users) == 0 ) {
 			throw new Exception(sprintf("User '%s' not found.", $login['login']));
 		}
 
-		foreach ( $users as $user ) {
-			array_push($identities, $user);
-			$aliases = $this->get_ldap_identities($this->ldap_con, $login, $this->cfg_alias, $user['dn']);
+		foreach ( $ldap_users as $ldap_user ) {
+			array_push($identities, $ldap_user);
+			$aliases = $this->get_ldap_identities($this->ldap_con, $login, $this->cfg_alias, $ldap_user['dn']);
 			foreach ( $aliases as $alias ) {
 				array_push($identities, $alias);
 			}
