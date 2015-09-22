@@ -62,13 +62,13 @@ class ldapAliasSync extends rcube_plugin {
 
 	/**
 	 * login_after
-	 * 
+	 *
 	 * See http://trac.roundcube.net/wiki/Plugin_Hooks
 	 * Arguments:
 	 * - URL parameters (e.g. task, action, etc.)
 	 * Return values:
 	 * - task
-	 * - action 
+	 * - action
 	 * - more URL parameters
 	 */
 	function login_after($args) {
@@ -85,16 +85,16 @@ class ldapAliasSync extends rcube_plugin {
 		}
 
 		return $args;
-	}			
+	}
 
 	function fetch_identities($login) {
-		users   = array();
-		user    = array();
-		aliases = array();
-		alias   = array();
-		identities = array();
+		$users      = array();
+		$user       = array();
+		$aliases    = array();
+		$alias      = array();
+		$identities = array();
 
-		$users = get_ldap_identities($this->ldap_con, $login, $this->cfg_user);
+		$users = get_ldap_identities($this->ldap_con, $login, $this->cfg_user, '');
 
 		if ( $identities['count'] = 0 ) {
 			throw new Exception(sprintf("User '%s' not found.", $login['login']));
@@ -111,7 +111,7 @@ class ldapAliasSync extends rcube_plugin {
 		return $identities;
 	}
 
-	function get_ldap_identities($con, $login, $config, $dn = '') {
+	function get_ldap_identities($con, $login, $config, $dn) {
 		$base_dn = $config['base_dn'];
 		$filter  = $config['filter'];
 		$fields  = array();
@@ -136,15 +136,33 @@ class ldapAliasSync extends rcube_plugin {
 		$filter = str_replace('%%', '%', $filter);
 
 		// Prepare LDAP query attributes
-		( $config['attr_mail'] ) : array_push($fields, $config['attr_mail']);
-		( $config['attr_local'] ) : array_push($fields, $config['attr_local']);
-		( $config['attr_dom'] ) : array_push($fields, $config['attr_dom']);
-		( $config['attr_name'] ) : array_push($fields, $config['attr_name']);
-		( $config['attr_org'] ) : array_push($fields, $config['attr_org']);
-		( $config['attr_reply'] ) : array_push($fields, $config['attr_reply']);
-		( $config['attr_bcc'] ) : array_push($fields, $config['attr_bcc']);
-		( $config['attr_sig'] ) : array_push($fields, $config['attr_sig']);
-		( $config['mail_by'] == 'memberof' ) : array_push($fields, 'memberof');
+		if ( $config['attr_mail'] ) {
+			array_push($fields, $config['attr_mail']);
+		}
+		if ( $config['attr_local'] ) {
+			array_push($fields, $config['attr_local']);
+		}
+		if ( $config['attr_dom'] ) {
+			array_push($fields, $config['attr_dom']);
+		}
+		if ( $config['attr_name'] ) {
+			array_push($fields, $config['attr_name']);
+		}
+		if ( $config['attr_org'] ) {
+			array_push($fields, $config['attr_org']);
+		}
+		if ( $config['attr_reply'] ) {
+			array_push($fields, $config['attr_reply']);
+		}
+		if ( $config['attr_bcc'] ) {
+			array_push($fields, $config['attr_bcc']);
+		}
+		if ( $config['attr_sig'] ) {
+			array_push($fields, $config['attr_sig']);
+		}
+		if ( $config['mail_by'] == 'memberof' ) {
+			array_push($fields, 'memberof');
+		}
 
 		// Bind to server
 		if ( $config['bind_dn'] ){
@@ -182,7 +200,7 @@ class ldapAliasSync extends rcube_plugin {
 		$entry      = array();
 		$local      = '';
 		$domain     = '';
-		$break      = true;
+		$stop       = true;
 
 		// Get attributes
 		$identity['dn'] = $ldap_id['dn'];
@@ -219,11 +237,11 @@ class ldapAliasSync extends rcube_plugin {
 		}
 
 		// Get e-mail address
-		switch $config['mail_by'] {
+		switch ( $config['mail_by'] ) {
 			case 'attribute':
 				$ldap_temp = $ldap_id[$config['attr_mail']];
 				foreach ( $ldap_temp as $attr ) {
-					if ( strstr($attr, '@') {
+					if ( strstr($attr, '@') ) {
 						$domain = explode('@', $attr)[1];
 						if ( $domain && ! in_array( $domain, $config['ignore_domains']) ) {
 							$identity['email'] = $attr;
@@ -234,8 +252,12 @@ class ldapAliasSync extends rcube_plugin {
 			case 'dn':
 				$ldap_temp = $ldap_id[$config['attr_local']];
 				$local = $ldap_temp[0];
-				( $config['non_domain_attr'] == 'skip' ) : $break = false ? $break = true;
-				$domain = get_domain_name($ldap_id['dn'], $config['attr_dom'], $break);
+				if ( $config['non_domain_attr'] == 'skip' ) {
+					$stop = false;
+				} else {
+					$stop = true;
+				}
+				$domain = get_domain_name($ldap_id['dn'], $config['attr_dom'], $stop);
 				if ( $local && $domain && ! in_array($domain, $config['ignore_domains']) ) {
 					$identity['email'] = $local.'@'.$domain;
 					array_push($identities, $identity);
@@ -244,10 +266,14 @@ class ldapAliasSync extends rcube_plugin {
 			case 'memberof':
 				$ldap_temp = $ldap_id[$config['attr_local']];
 				$local = $ldap_temp[0];
-				( $config['non_domain_attr'] == 'skip' ) : $break = false ? $break = true;
+				if ( $config['non_domain_attr'] == 'skip' ) {
+					$stop = false;
+				} else {
+					$stop = true;
+				}
 				$ldap_temp = $ldap_id['memberof'];
 				foreach ( $ldap_temp as $memberof ) {
-					$domain = get_domain_name($memberof, $config['attr_dom', $break);
+					$domain = get_domain_name($memberof, $config['attr_dom'], $stop);
 					if ( $local && $domain && ! in_array($domain, $config['ignore_domains']) ) {
 						$identity['email'] = $local.'@'.$domain;
 						array_push($identities, $identity);
@@ -336,7 +362,7 @@ class ldapAliasSync extends rcube_plugin {
 			ldap_set_option($con, LDAP_OPT_PROTOCOL_VERSION, 3);
 			return $con;
 		} else {
-			throw new Exception(sprintf("Connection to the server failed: (Error=%s)", ldap_errno($con));
+			throw new Exception(sprintf("Connection to the server failed: (Error=%s)", ldap_errno($con)));
 		}
 	}
 
@@ -348,8 +374,8 @@ class ldapAliasSync extends rcube_plugin {
 		if ( strstr($info, '@') ) {
 			$login_parts = explode('@', $info);
 
-			$login['local'] = array_shift($login_parts);
-			$login['domain'] = array_shift($login_parts);
+			$login['local'] = $login_parts[0];
+			$login['domain'] = $login_parts[1];
 
 			if ( $config['replace_domain'] && $config['search_domain'] ) {
 				$login['domain'] = $config['search_domain'];
@@ -373,7 +399,7 @@ class ldapAliasSync extends rcube_plugin {
 		return $login;
 	}
 
-	function get_domain_name( $dn, $attr, $break = true ) {
+	function get_domain_name( $dn, $attr, $stop = true ) {
     		$found = false;
 		$domain = '';
 
@@ -388,7 +414,7 @@ class ldapAliasSync extends rcube_plugin {
 				} else {
 					$domain .= ".".$objs[1];
 				}
-			} elseif ( $found == true && $break == true ) {
+			} elseif ( $found == true && $stop == true ) {
 				break;
 			}
 		}
@@ -400,26 +426,46 @@ class ldapAliasSync extends rcube_plugin {
 		$SCHEMES = array('ldap', 'ldaps', 'ldapi');
 
 		// Set default values for empty config parameters
-		(! $config['scheme']) : $config['scheme'] = 'ldap';
-		(! $config['server']) : $config['server'] = 'localhost';
-		(! $config['port']) : $config['port'] = '389';
-		(! $config['bind_dn']) : $config['bind_dn'] = '';
-		(! $config['bind_pw']) : $config['bind_pw'] = '';
+		if (! $config['scheme']) {
+			$config['scheme'] = 'ldap';
+		}
+		if (! $config['server']) {
+			$config['server'] = 'localhost';
+		}
+		if (! $config['port']) {
+			$config['port'] = '389';
+		}
+		if (! $config['bind_dn']) {
+			$config['bind_dn'] = '';
+		}
+		if (! $config['bind_pw']) {
+			$config['bind_pw'] = '';
+		}
 
 		// Check parameters with fixed value set
-		(! in_array($config['scheme'], $SCHEMES)) : throw new Exception('[ldap] scheme "'.$config['scheme'].'" is invalid');
+		if (! in_array($config['scheme'], $SCHEMES)) {
+			throw new Exception('[ldap] scheme "'.$config['scheme'].'" is invalid');
+		}
 
 		return $config;
 	}
 
 	function check_mail_config($config) {
 		// Set default values for empty config parameters
-		(! $config['search_domain']) : $config['search_domain'] = '';
-		(! $config['replace_domain']) : $config['replace_domain'] = false;
-		(! $config['dovecot_separator']) : $config['dovecot_separator'] = '';
+		if (! $config['search_domain']) {
+			$config['search_domain'] = '';
+		}
+		if (! $config['replace_domain']) {
+			$config['replace_domain'] = false;
+		}
+		if (! $config['dovecot_separator']) {
+			$config['dovecot_separator'] = '';
+		}
 
 		// Check parameter combinations
-		($config['replace_domain'] && ! $config['search_domain']) : throw new Exception('[mail] search_domain must not be initial, if replace_domain is set to "true"!');
+		if ($config['replace_domain'] && ! $config['search_domain']) {
+			throw new Exception('[mail] search_domain must not be initial, if replace_domain is set to "true"!');
+		}
 
 		return $config;
 	}
@@ -427,27 +473,73 @@ class ldapAliasSync extends rcube_plugin {
 	function check_user_config($config) {
 		$DEREFS   = array($LDAP_DEREF_NEVER, $LDAP_DEREF_FINDING, $LDAP_DEREF_SEARCHING, $LDAP_DEREF_ALWAYS);
 		$MAIL_BYS = array('attribute', 'dn', 'memberof', 'static');
-		$NDATTRS  = array('break', 'skip');
+		$NDATTRS  = array('stop', 'skip');
 
 		// Set default values for empty config parameters
-		(! $config['base_dn']) : $config['base_dn'] = '';
-		(! $config['filter']) : $config['filter'] = '(objectClass=*)';
-		(! $config['deref']) : $config['deref'] = 'never';
-		(! $config['mail_by']) : $config['mail_by'] = 'attribute';
-		(! $config['attr_mail']) : $config['attr_mail'] = 'mail' ? $config['attr_mail'] = strtolower($config['attr_mail']);
-		(! $config['attr_local']) : $config['attr_local'] = '' ? $config['attr_local'] = strtolower($config['attr_local']);
-		(! $config['attr_dom']) : $config['attr_dom'] = '' ? $config['attr_dom'] = strtolower($config['attr_dom']);
-		(! $config['domain_static']) : $config['domain_static'] = '';
-		(! $config['ignore_domains']) : $config['ignore_domains'] = array();
-		(! $config['non_domain_attr']) : $config['non_domain_attr'] = 'break';
-		(! $config['attr_name']) : $config['attr_name'] = '' ? $config['attr_name'] = strtolower($config['attr_name']);
-		(! $config['attr_org']) : $config['attr_org'] = '' ? $config['attr_org'] = strtolower($config['attr_org']);
-		(! $config['attr_reply']) : $config['attr_reply'] = '' ? $config['attr_reply'] = strtolower($config['attr_reply']);
-		(! $config['attr_bcc']) : $config['attr_bcc'] = '' ? $config['attr_bcc'] = strtolower($config['attr_bcc']);
-		(! $config['attr_sig']) : $config['attr_sig'] = '' ? $config['attr_sig'] = strtolower($config['attr_sig']);
+		if (! $config['base_dn']) {
+			$config['base_dn'] = '';
+		}
+		if (! $config['filter']) {
+			$config['filter'] = '(objectClass=*)';
+		}
+		if (! $config['deref']) {
+			$config['deref'] = 'never';
+		}
+		if (! $config['mail_by']) {
+			$config['mail_by'] = 'attribute';
+		}
+		if (! $config['attr_mail']) {
+			$config['attr_mail'] = 'mail';
+		} else {
+			$config['attr_mail'] = strtolower($config['attr_mail']);
+		}
+		if (! $config['attr_local']) {
+			$config['attr_local'] = '';
+		} else {
+			$config['attr_local'] = strtolower($config['attr_local']);
+		}
+		if (! $config['attr_dom']) {
+			$config['attr_dom'] = '';
+		} else {
+			$config['attr_dom'] = strtolower($config['attr_dom']);
+		}
+		if (! $config['domain_static']) {
+			$config['domain_static'] = '';
+		}
+		if (! $config['ignore_domains']) {
+			$config['ignore_domains'] = array();
+		}
+		if (! $config['non_domain_attr']) {
+			$config['non_domain_attr'] = 'stop';
+		}
+		if (! $config['attr_name']) {
+			$config['attr_name'] = '';
+		} else {
+			$config['attr_name'] = strtolower($config['attr_name']);
+		}
+		if (! $config['attr_org']) {
+			$config['attr_org'] = '';
+		} else {
+			$config['attr_org'] = strtolower($config['attr_org']);
+		}
+		if (! $config['attr_reply']) {
+			$config['attr_reply'] = '';
+		} else {
+			$config['attr_reply'] = strtolower($config['attr_reply']);
+		}
+		if (! $config['attr_bcc']) {
+			$config['attr_bcc'] = '';
+		} else {
+			$config['attr_bcc'] = strtolower($config['attr_bcc']);
+		}
+		if (! $config['attr_sig']) {
+			$config['attr_sig'] = '';
+		} else {
+			$config['attr_sig'] = strtolower($config['attr_sig']);
+		}
 
 		// Override values
-		switch $config['deref'] {
+		switch ( $config['deref'] ) {
 			case 'never':
 				$config['deref'] = $LDAP_DEREF_NEVER;
 				break;
@@ -463,21 +555,43 @@ class ldapAliasSync extends rcube_plugin {
 		}
 
 		// Check on empty parameters
-		(! $config['base_dn']) : throw new Exception('[user_search] base_dn must not be initial!');
+		if (! $config['base_dn']) {
+			throw new Exception('[user_search] base_dn must not be initial!');
+		}
 
 		// Check parameters with fixed value set
-		(! in_array($config['deref'], $DEREFS)) : throw new Exception('[user_search] deref "'.$config['deref'].'" is invalid');
-		(! in_array($config['mail_by'], $MAIL_BYS)) : throw new Exception('[user_search] mail_by "'.$config['mail_by'].'" is invalid');
-		(! in_array($config['non_domain_attr'], $NDATTRS)) : throw new Exception('[user_search] non_domain_attr "'.$config['non_domain_attr'].'" is invalid');
+		if (! in_array($config['deref'], $DEREFS)) {
+			throw new Exception('[user_search] deref "'.$config['deref'].'" is invalid');
+		}
+		if (! in_array($config['mail_by'], $MAIL_BYS)) {
+			throw new Exception('[user_search] mail_by "'.$config['mail_by'].'" is invalid');
+		}
+		if (! in_array($config['non_domain_attr'], $NDATTRS)) {
+			throw new Exception('[user_search] non_domain_attr "'.$config['non_domain_attr'].'" is invalid');
+		}
 
 		// Check parameter combinations
-		($config['mail_by'] == 'attribute' && ! $config['attr_mail']) : throw new Exception('[user_search] attr_mail must not be initial, if mail_by is set to "attribute"!');
-		($config['mail_by'] == 'dn' && ! $config['attr_local']) : throw new Exception('[user_search] attr_local must not be initial, if mail_by is set to "dn"!');
-		($config['mail_by'] == 'dn' && ! $config['attr_dom']) : throw new Exception('[user_search] attr_dom must not be initial, if mail_by is set to "dn"!');
-		($config['mail_by'] == 'memberof' && ! $config['attr_local']) : throw new Exception('[user_search] attr_local must not be initial, if mail_by is set to "memberof"!');
-		($config['mail_by'] == 'memberof' && ! $config['attr_dom']) : throw new Exception('[user_search] attr_dom must not be initial, if mail_by is set to "memberof"!');
-		($config['mail_by'] == 'static' && ! $config['attr_local']) : throw new Exception('[user_search] attr_local must not be initial, if mail_by is set to "static"!');
-		($config['mail_by'] == 'static' && ! $config['domain_static']) : throw new Exception('[user_search] domain_static must not be initial, if mail_by is set to "static"!');
+		if ($config['mail_by'] == 'attribute' && ! $config['attr_mail']) {
+			throw new Exception('[user_search] attr_mail must not be initial, if mail_by is set to "attribute"!');
+		}
+		if ($config['mail_by'] == 'dn' && ! $config['attr_local']) {
+			throw new Exception('[user_search] attr_local must not be initial, if mail_by is set to "dn"!');
+		}
+		if ($config['mail_by'] == 'dn' && ! $config['attr_dom']) {
+			throw new Exception('[user_search] attr_dom must not be initial, if mail_by is set to "dn"!');
+		}
+		if ($config['mail_by'] == 'memberof' && ! $config['attr_local']) {
+			throw new Exception('[user_search] attr_local must not be initial, if mail_by is set to "memberof"!');
+		}
+		if ($config['mail_by'] == 'memberof' && ! $config['attr_dom']) {
+			throw new Exception('[user_search] attr_dom must not be initial, if mail_by is set to "memberof"!');
+		}
+		if ($config['mail_by'] == 'static' && ! $config['attr_local']) {
+			throw new Exception('[user_search] attr_local must not be initial, if mail_by is set to "static"!');
+		}
+		if ($config['mail_by'] == 'static' && ! $config['domain_static']) {
+			throw new Exception('[user_search] domain_static must not be initial, if mail_by is set to "static"!');
+		}
 
 		return $config;
 	}
@@ -485,27 +599,73 @@ class ldapAliasSync extends rcube_plugin {
 	function check_alias_config($config) {
 		$DEREFS   = array('never', 'find', 'search', 'always');
 		$MAIL_BYS = array('attribute', 'dn', 'memberof', 'static');
-		$NDATTRS  = array('break', 'skip');
+		$NDATTRS  = array('stop', 'skip');
 
 		// Set default values for empty config parameters
-		(! $config['base_dn']) : $config['base_dn'] = '';
-		(! $config['filter']) : $config['filter'] = '(objectClass=*)';
-		(! $config['deref']) : $config['deref'] = 'never';
-		(! $config['mail_by']) : $config['mail_by'] = 'attribute';
-		(! $config['attr_mail']) : $config['attr_mail'] = 'mail' ? $config['attr_mail'] = strtolower($config['attr_mail']);
-		(! $config['attr_local']) : $config['attr_local'] = '' ? $config['attr_local'] = strtolower($config['attr_local']);
-		(! $config['attr_dom']) : $config['attr_dom'] = '' ? $config['attr_dom'] = strtolower($config['attr_dom']);
-		(! $config['domain_static']) : $config['domain_static'] = '';
-		(! $config['ignore_domains']) : $config['ignore_domains'] = array();
-		(! $config['non_domain_attr']) : $config['non_domain_attr'] = 'break';
-		(! $config['attr_name']) : $config['attr_name'] = '' ? $config['attr_name'] = strtolower($config['attr_name']);
-		(! $config['attr_org']) : $config['attr_org'] = '' ? $config['attr_org'] = strtolower($config['attr_org']);
-		(! $config['attr_reply']) : $config['attr_reply'] = '' ? $config['attr_reply'] = strtolower($config['attr_reply']);
-		(! $config['attr_bcc']) : $config['attr_bcc'] = '' ? $config['attr_bcc'] = strtolower($config['attr_bcc']);
-		(! $config['attr_sig']) : $config['attr_sig'] = '' ? $config['attr_sig'] = strtolower($config['attr_sig']);
+		if (! $config['base_dn']) {
+			$config['base_dn'] = '';
+		}
+		if (! $config['filter']) {
+			$config['filter'] = '(objectClass=*)';
+		}
+		if (! $config['deref']) {
+			$config['deref'] = 'never';
+		}
+		if (! $config['mail_by']) {
+			$config['mail_by'] = 'attribute';
+		}
+		if (! $config['attr_mail']) {
+			$config['attr_mail'] = 'mail';
+		} else {
+			$config['attr_mail'] = strtolower($config['attr_mail']);
+		}
+		if (! $config['attr_local']) {
+			$config['attr_local'] = '';
+		} else {
+			$config['attr_local'] = strtolower($config['attr_local']);
+		}
+		if (! $config['attr_dom']) {
+			$config['attr_dom'] = '';
+		} else {
+			$config['attr_dom'] = strtolower($config['attr_dom']);
+		}
+		if (! $config['domain_static']) {
+			$config['domain_static'] = '';
+		}
+		if (! $config['ignore_domains']) {
+			$config['ignore_domains'] = array();
+		}
+		if (! $config['non_domain_attr']) {
+			$config['non_domain_attr'] = 'stop';
+		}
+		if (! $config['attr_name']) {
+			$config['attr_name'] = '';
+		} else {
+			$config['attr_name'] = strtolower($config['attr_name']);
+		}
+		if (! $config['attr_org']) {
+			$config['attr_org'] = '';
+		} else {
+			$config['attr_org'] = strtolower($config['attr_org']);
+		}
+		if (! $config['attr_reply']) {
+			$config['attr_reply'] = '';
+		} else {
+			$config['attr_reply'] = strtolower($config['attr_reply']);
+		}
+		if (! $config['attr_bcc']) {
+			$config['attr_bcc'] = '';
+		} else {
+			$config['attr_bcc'] = strtolower($config['attr_bcc']);
+		}
+		if (! $config['attr_sig']) {
+			$config['attr_sig'] = '';
+		} else {
+			$config['attr_sig'] = strtolower($config['attr_sig']);
+		}
 
 		// Override values
-		switch $config['deref'] {
+		switch ( $config['deref'] ) {
 			case 'never':
 				$config['deref'] = $LDAP_DEREF_NEVER;
 				break;
@@ -521,29 +681,55 @@ class ldapAliasSync extends rcube_plugin {
 		}
 
 		// Check on empty parameters
-		(! $config['base_dn']) : throw new Exception('[alias_search] base_dn must not be initial!');
+		if (! $config['base_dn']) {
+			throw new Exception('[alias_search] base_dn must not be initial!');
+		}
 
 		// Check parameters with fixed value set
-		(! in_array($config['deref'], $DEREFS)) : throw new Exception('[alias_search] deref "'.$config['deref'].'" is invalid');
-		(! in_array($config['mail_by'], $MAIL_BYS)) : throw new Exception('[alias_search] mail_by "'.$config['mail_by'].'" is invalid');
-		(! in_array($config['non_domain_attr'], $NDATTRS)) : throw new Exception('[alias_search] non_domain_attr "'.$config['non_domain_attr'].'" is invalid');
+		if (! in_array($config['deref'], $DEREFS)) {
+			throw new Exception('[alias_search] deref "'.$config['deref'].'" is invalid');
+		}
+		if (! in_array($config['mail_by'], $MAIL_BYS)) {
+			throw new Exception('[alias_search] mail_by "'.$config['mail_by'].'" is invalid');
+		}
+		if (! in_array($config['non_domain_attr'], $NDATTRS)) {
+			throw new Exception('[alias_search] non_domain_attr "'.$config['non_domain_attr'].'" is invalid');
+		}
 
 		// Check parameter combinations
-		($config['mail_by'] == 'attribute' && ! $config['attr_mail']) : throw new Exception('[alias_search] attr_mail must not be initial, if mail_by is set to "attribute"!');
-		($config['mail_by'] == 'dn' && ! $config['attr_local']) : throw new Exception('[alias_search] attr_local must not be initial, if mail_by is set to "dn"!');
-		($config['mail_by'] == 'dn' && ! $config['attr_dom']) : throw new Exception('[alias_search] attr_dom must not be initial, if mail_by is set to "dn"!');
-		($config['mail_by'] == 'memberof' && ! $config['attr_local']) : throw new Exception('[alias_search] attr_local must not be initial, if mail_by is set to "memberof"!');
-		($config['mail_by'] == 'memberof' && ! $config['attr_dom']) : throw new Exception('[alias_search] attr_dom must not be initial, if mail_by is set to "memberof"!');
-		($config['mail_by'] == 'static' && ! $config['attr_local']) : throw new Exception('[alias_search] attr_local must not be initial, if mail_by is set to "static"!');
-		($config['mail_by'] == 'static' && ! $config['domain_static']) : throw new Exception('[alias_search] domain_static must not be initial, if mail_by is set to "static"!');
+		if ($config['mail_by'] == 'attribute' && ! $config['attr_mail']) {
+			throw new Exception('[alias_search] attr_mail must not be initial, if mail_by is set to "attribute"!');
+		}
+		if ($config['mail_by'] == 'dn' && ! $config['attr_local']) {
+			throw new Exception('[alias_search] attr_local must not be initial, if mail_by is set to "dn"!');
+		}
+		if ($config['mail_by'] == 'dn' && ! $config['attr_dom']) {
+			throw new Exception('[alias_search] attr_dom must not be initial, if mail_by is set to "dn"!');
+		}
+		if ($config['mail_by'] == 'memberof' && ! $config['attr_local']) {
+			throw new Exception('[alias_search] attr_local must not be initial, if mail_by is set to "memberof"!');
+		}
+		if ($config['mail_by'] == 'memberof' && ! $config['attr_dom']) {
+			throw new Exception('[alias_search] attr_dom must not be initial, if mail_by is set to "memberof"!');
+		}
+		if ($config['mail_by'] == 'static' && ! $config['attr_local']) {
+			throw new Exception('[alias_search] attr_local must not be initial, if mail_by is set to "static"!');
+		}
+		if ($config['mail_by'] == 'static' && ! $config['domain_static']) {
+			throw new Exception('[alias_search] domain_static must not be initial, if mail_by is set to "static"!');
+		}
 
 		return $config;
 	}
 
 	function check_update_config($config) {
 		// Set default values for empty parameters
-		(! $config['update_existing']) : $config['update_existing'] = false;
-		(! $config['update_empty_fields']) : $config['update_existing'] = false;
+		if (! $config['update_existing']) {
+			$config['update_existing'] = false;
+		}
+		if (! $config['update_empty_fields']) {
+			$config['update_existing'] = false;
+		}
 
 		return $config;
 	}
