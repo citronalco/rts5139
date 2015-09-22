@@ -25,402 +25,6 @@ class ldapAliasSync extends rcube_plugin {
 	// Plugin variables
 	private $ldap_con;
 
-// ---------- Main functions
-	// Plugin initialization
-	function init() {
-		try {
-			write_log('ldapAliasSync', 'Initialising');
-
-			// Load general roundcube config settings
-			$this->load_config('config.inc.php');
-			$this->app = rcmail::get_instance();
-
-			// Load plugin config settings
-			$this->config = $this->app->config->get('ldapAliasSync');
-
-			$this->cfg_ldap	  = check_ldap_config($this->config['ldap']);
-			$this->cfg_mail	  = check_mail_config($this->config['mail']);
-			$this->cfg_user	  = check_user_config($this->config['user_search']);
-			$this->cfg_alias  = check_alias_config($this->config['alias_search']);
-			$this->cfg_update = check_update_config($this->config['update']);
-
-			$this->ldap_con  = initialize_ldap($this->cfg_ldap);
-
-			if ( is_resource($this->ldap_con) ) {
-				// register hook
-				$this->add_hook('login_after', array($this, 'login_after'));
-				$this->initialised = true;
-			}
-		} catch ( Exception $exc ) {
-			write_log('ldapAliasSync', 'Failed to initialise: '.$exc->getMessage());
-		}
-
-		if ( $this->initialised ) {
-			write_log('ldapAliasSync', 'Initialised');
-		}
-	}
-
-	/**
-	 * login_after
-	 *
-	 * See http://trac.roundcube.net/wiki/Plugin_Hooks
-	 * Arguments:
-	 * - URL parameters (e.g. task, action, etc.)
-	 * Return values:
-	 * - task
-	 * - action
-	 * - more URL parameters
-	 */
-	function login_after($args) {
-		$login = array();
-
-		try {
-			$this->rc_user = rcmail::get_instance()->user;
-			$login = get_login_info($this->rc_user->get_username('mail'), $this->cfg_mail);
-
-			$identities = fetch_identities($login);
-			sync_identities_db($identities);
-		} catch ( Exception $exc ) {
-			write_log('ldapAliasSync', 'Runtime error: '.$exc->getMessage());
-		}
-
-		return $args;
-	}
-
-	function fetch_identities($login) {
-		$users      = array();
-		$user       = array();
-		$aliases    = array();
-		$alias      = array();
-		$identities = array();
-
-		$users = get_ldap_identities($this->ldap_con, $login, $this->cfg_user, '');
-
-		if ( $identities['count'] = 0 ) {
-			throw new Exception(sprintf("User '%s' not found.", $login['login']));
-		}
-
-		foreach ( $users as $user ) {
-			array_push($identities, $user);
-			$aliases = get_ldap_identities($this->ldap_con, $login, $this->cfg_alias, $user['dn']);
-			foreach ( $aliases as $alias ) {
-				array_push($identities, $alias);
-			}
-		}
-
-		return $identities;
-	}
-
-	function get_ldap_identities($con, $login, $config, $dn) {
-		$base_dn = $config['base_dn'];
-		$filter  = $config['filter'];
-		$fields  = array();
-		$bound   = false;
-		$result  = null;
-		$entries = array();
-
-		// Prepare LDAP query base DN
-		$base_dn = str_replace('%login', $login['login'], $base_dn);
-		$base_dn = str_replace('%local', $login['local'], $base_dn);
-		$base_dn = str_replace('%domain', $login['domain'], $base_dn);
-		$base_dn = str_replace('%email', $login['email'], $base_dn);
-		$base_dn = str_replace('%dn', $dn, $base_dn);
-		$base_dn = str_replace('%%', '%', $base_dn);
-
-		// Prepare LDAP query filter
-		$filter = str_replace('%login', $login['login'], $filter);
-		$filter = str_replace('%local', $login['local'], $filter);
-		$filter = str_replace('%domain', $login['domain'], $filter);
-		$filter = str_replace('%email', $login['email'], $filter);
-		$filter = str_replace('%dn', $dn, $filter);
-		$filter = str_replace('%%', '%', $filter);
-
-		// Prepare LDAP query attributes
-		if ( $config['attr_mail'] ) {
-			array_push($fields, $config['attr_mail']);
-		}
-		if ( $config['attr_local'] ) {
-			array_push($fields, $config['attr_local']);
-		}
-		if ( $config['attr_dom'] ) {
-			array_push($fields, $config['attr_dom']);
-		}
-		if ( $config['attr_name'] ) {
-			array_push($fields, $config['attr_name']);
-		}
-		if ( $config['attr_org'] ) {
-			array_push($fields, $config['attr_org']);
-		}
-		if ( $config['attr_reply'] ) {
-			array_push($fields, $config['attr_reply']);
-		}
-		if ( $config['attr_bcc'] ) {
-			array_push($fields, $config['attr_bcc']);
-		}
-		if ( $config['attr_sig'] ) {
-			array_push($fields, $config['attr_sig']);
-		}
-		if ( $config['mail_by'] == 'memberof' ) {
-			array_push($fields, 'memberof');
-		}
-
-		// Bind to server
-		if ( $config['bind_dn'] ){
-			$bound = ldap_bind($con, $config['bind_dn'], $config['bind_pw']);
-		} else {
-			$bound = ldap_bind($con);
-                }
-
-		if ( ! $bound ) {
-			throw new Exception(sprintf("Bind to server '%s' failed. Con: (%s), Error: (%s)", $this->cfg_ldap['server'], $con, ldap_errno($con)));
-		}
-
-		$result = ldap_search($con, $base_dn, $filter, $fields, 0, 0, 0, $config['deref']);
-
-		if ( $result ) {
-			$entries = ldap_get_entries($con, $result);
-		}
-
-		ldap_close($con);
-
-		foreach ( $entries as $entry ) {
-			$ids = get_ids_from_obj($entry, $config);
-			foreach ( $ids as $id ) {
-				array_push($identities, $id);
-			}
-		}
-
-		return $identities;
-	}
-
-	function get_ids_from_obj($ldap_id, $config) {
-		$identity   = array();
-		$identities = array();
-		$entries    = array();
-		$entry      = array();
-		$local      = '';
-		$domain     = '';
-		$stop       = true;
-
-		// Get attributes
-		$identity['dn'] = $ldap_id['dn'];
-
-		if ( $config['attr_name'] ) {
-			$ldap_temp = $ldap_id[$config['attr_name']];
-			$identity['name'] = $ldap_temp[0];
-		}
-
-		if ( $config['attr_org'] ) {
-			$ldap_temp = $ldap_id[$config['attr_org']];
-			$identity['organization'] = $ldap_temp[0];
-		}
-
-		if ( $config['attr_reply'] ) {
-			$ldap_temp = $ldap_id[$config['attr_reply']];
-			$identity['reply-to'] = $ldap_temp[0];
-		}
-
-		if ( $config['attr_bcc'] ) {
-			$ldap_temp = $ldap_id[$config['attr_bcc']];
-			$identity['bcc'] = $ldap_temp[0];
-		}
-
-		if ( $config['attr_sig'] ) {
-			$ldap_temp = $ldap_id[$config['attr_sig']];
-			$identity['signature'] = $ldap_temp[0];
-		}
-
-		if ( preg_match('/^\s*<[a-zA-Z]+/', $identity['signature']) ) {
-			$identity['html_signature'] = 1;
-		} else {
-			$identity['html_signature'] = 0;
-		}
-
-		// Get e-mail address
-		switch ( $config['mail_by'] ) {
-			case 'attribute':
-				$ldap_temp = $ldap_id[$config['attr_mail']];
-				foreach ( $ldap_temp as $attr ) {
-					if ( strstr($attr, '@') ) {
-						$domain = explode('@', $attr)[1];
-						if ( $domain && ! in_array( $domain, $config['ignore_domains']) ) {
-							$identity['email'] = $attr;
-						}
-					}
-				}
-				break;
-			case 'dn':
-				$ldap_temp = $ldap_id[$config['attr_local']];
-				$local = $ldap_temp[0];
-				if ( $config['non_domain_attr'] == 'skip' ) {
-					$stop = false;
-				} else {
-					$stop = true;
-				}
-				$domain = get_domain_name($ldap_id['dn'], $config['attr_dom'], $stop);
-				if ( $local && $domain && ! in_array($domain, $config['ignore_domains']) ) {
-					$identity['email'] = $local.'@'.$domain;
-					array_push($identities, $identity);
-				}
-				break;
-			case 'memberof':
-				$ldap_temp = $ldap_id[$config['attr_local']];
-				$local = $ldap_temp[0];
-				if ( $config['non_domain_attr'] == 'skip' ) {
-					$stop = false;
-				} else {
-					$stop = true;
-				}
-				$ldap_temp = $ldap_id['memberof'];
-				foreach ( $ldap_temp as $memberof ) {
-					$domain = get_domain_name($memberof, $config['attr_dom'], $stop);
-					if ( $local && $domain && ! in_array($domain, $config['ignore_domains']) ) {
-						$identity['email'] = $local.'@'.$domain;
-						array_push($identities, $identity);
-					}
-				}
-				break;
-			case 'static':
-				$ldap_temp = $ldap_id[$config['attr_local']];
-				$local = $ldap_temp[0];
-				if ( $local && $config['domain_static'] && ! in_array($config['domain_static'], $config['ignore_domains']) ) {
-					$identity['email'] = $local.'@'.$config['domain_static'];
-					array_push($identities, $identity);
-				}
-				break;
-		}
-		return $identities;
-	}
-
-	function sync_identities_db($identities) {
-		$db_identities = array();
-		$db_identity   = array();
-		$identity      = array();
-		$key           = '';
-		$value         = '';
-		$in_db         = false;
-		$in_ldap       = false;
-
-		if ( count($identities) > 0 && $db_identities = $this->rc_user->list_identities() ) {
-
-			# Check which identities not yet contained in the database
-			foreach ( $identities as $identity ) {
-				$in_db = false;
-
-				foreach ( $db_identities as $db_identity ) {
-					# email is our only comparison parameter
-					if( $db_identity['email'] == $identity['email'] ) {
-						if ( $this->cfg_update['update_existing'] ) {
-							if ( ! $this->cfg_update['update_empty_fields']) {
-								foreach ($identity as $key => $value) {
-									if ( empty($identity[$key]) ) {
-										unset($identity[$key]);
-									}
-								}
-							}
-							$this->rc_user->update_identity ( $db_identity['identity_id'], $identity );
-						}
-						$in_db = true;
-						break;
-					}
-				}
-
-				if( !$in_db ) {
-					$this->rc_user->insert_identity( $identity );
-				}
-			}
-
-			# Check which identities are available in database but nut in LDAP and delete those
-			foreach ( $db_identities as $db_identity ) {
-				$in_ldap = false;
-
-				foreach ( $identities as $identity ) {
-					# email is our only comparison parameter
-					if( $db_identity['email'] == $identity['email'] ) {
-						$in_ldap = true;
-						break;
-					}
-				}
-
-				# If this identity does not exist in LDAP, delete it from database
-				if( !$in_ldap ) {
-					$this->rc_user->delete_identity($db_identity['identity_id']);
-				}
-			}
-		}
-	}
-
-// ---------- Helper functions
-	function initialize_ldap($config) {
-		$uri = '';
-		$con = null;
-
-		$uri = $config['scheme'].'://'.$config['server'].':'.$config['port'];
-
-		$con = ldap_connect($uri);
-		if ( is_resource($con) ) {
-			ldap_set_option($con, LDAP_OPT_PROTOCOL_VERSION, 3);
-			return $con;
-		} else {
-			throw new Exception(sprintf("Connection to the server failed: (Error=%s)", ldap_errno($con)));
-		}
-	}
-
-	function get_login_info($info, $config) {
-		$login = array();
-
-		$login['login'] = $info;
-
-		if ( strstr($info, '@') ) {
-			$login_parts = explode('@', $info);
-
-			$login['local'] = $login_parts[0];
-			$login['domain'] = $login_parts[1];
-
-			if ( $config['replace_domain'] && $config['search_domain'] ) {
-				$login['domain'] = $config['search_domain'];
-			}
-		} else {
-			$login['local'] = $login;
-
-			if ( $config['search_domain'] ) {
-				$login['domain'] = $config['search_domain'];
-			}
-		}
-
-		if ( $config['dovecot_separator'] && strstr($login['local'], $config['dovecot_separator']) ) {
-			$login['local'] = array_shift(explode($config['dovecot_separator'], $login['local']));
-		}
-
-		if ( $login['local'] && $login['domain'] ) {
-			$login['email'] = $login['local']."@".$login['domain'];
-		}
-
-		return $login;
-	}
-
-	function get_domain_name( $dn, $attr, $stop = true ) {
-    		$found = false;
-		$domain = '';
-
-		$dn_parts = explode(',', $dn);
-
-		foreach( $dn_parts as $dn_part ) {
-			$objs = explode('=', $dn_part);
-			if ($objs[0] == $attr) {
-				$found = true;
-				if ( strlen( $domain ) == 0 ) {
-					$domain = $objs[1];
-				} else {
-					$domain .= ".".$objs[1];
-				}
-			} elseif ( $found == true && $stop == true ) {
-				break;
-			}
-		}
-		return $domain;
-	}
-
 // ---------- Configuration functions
 	function check_ldap_config($config) {
 		$SCHEMES = array('ldap', 'ldaps', 'ldapi');
@@ -732,6 +336,402 @@ class ldapAliasSync extends rcube_plugin {
 		}
 
 		return $config;
+	}
+
+// ---------- Helper functions
+	function initialize_ldap($config) {
+		$uri = '';
+		$con = null;
+
+		$uri = $config['scheme'].'://'.$config['server'].':'.$config['port'];
+
+		$con = ldap_connect($uri);
+		if ( is_resource($con) ) {
+			ldap_set_option($con, LDAP_OPT_PROTOCOL_VERSION, 3);
+			return $con;
+		} else {
+			throw new Exception(sprintf("Connection to the server failed: (Error=%s)", ldap_errno($con)));
+		}
+	}
+
+	function get_login_info($info, $config) {
+		$login = array();
+
+		$login['login'] = $info;
+
+		if ( strstr($info, '@') ) {
+			$login_parts = explode('@', $info);
+
+			$login['local'] = $login_parts[0];
+			$login['domain'] = $login_parts[1];
+
+			if ( $config['replace_domain'] && $config['search_domain'] ) {
+				$login['domain'] = $config['search_domain'];
+			}
+		} else {
+			$login['local'] = $login;
+
+			if ( $config['search_domain'] ) {
+				$login['domain'] = $config['search_domain'];
+			}
+		}
+
+		if ( $config['dovecot_separator'] && strstr($login['local'], $config['dovecot_separator']) ) {
+			$login['local'] = array_shift(explode($config['dovecot_separator'], $login['local']));
+		}
+
+		if ( $login['local'] && $login['domain'] ) {
+			$login['email'] = $login['local']."@".$login['domain'];
+		}
+
+		return $login;
+	}
+
+	function get_domain_name( $dn, $attr, $stop = true ) {
+    		$found = false;
+		$domain = '';
+
+		$dn_parts = explode(',', $dn);
+
+		foreach( $dn_parts as $dn_part ) {
+			$objs = explode('=', $dn_part);
+			if ($objs[0] == $attr) {
+				$found = true;
+				if ( strlen( $domain ) == 0 ) {
+					$domain = $objs[1];
+				} else {
+					$domain .= ".".$objs[1];
+				}
+			} elseif ( $found == true && $stop == true ) {
+				break;
+			}
+		}
+		return $domain;
+	}
+
+	function get_ids_from_obj($ldap_id, $config) {
+		$identity   = array();
+		$identities = array();
+		$entries    = array();
+		$entry      = array();
+		$local      = '';
+		$domain     = '';
+		$stop       = true;
+
+		// Get attributes
+		$identity['dn'] = $ldap_id['dn'];
+
+		if ( $config['attr_name'] ) {
+			$ldap_temp = $ldap_id[$config['attr_name']];
+			$identity['name'] = $ldap_temp[0];
+		}
+
+		if ( $config['attr_org'] ) {
+			$ldap_temp = $ldap_id[$config['attr_org']];
+			$identity['organization'] = $ldap_temp[0];
+		}
+
+		if ( $config['attr_reply'] ) {
+			$ldap_temp = $ldap_id[$config['attr_reply']];
+			$identity['reply-to'] = $ldap_temp[0];
+		}
+
+		if ( $config['attr_bcc'] ) {
+			$ldap_temp = $ldap_id[$config['attr_bcc']];
+			$identity['bcc'] = $ldap_temp[0];
+		}
+
+		if ( $config['attr_sig'] ) {
+			$ldap_temp = $ldap_id[$config['attr_sig']];
+			$identity['signature'] = $ldap_temp[0];
+		}
+
+		if ( preg_match('/^\s*<[a-zA-Z]+/', $identity['signature']) ) {
+			$identity['html_signature'] = 1;
+		} else {
+			$identity['html_signature'] = 0;
+		}
+
+		// Get e-mail address
+		switch ( $config['mail_by'] ) {
+			case 'attribute':
+				$ldap_temp = $ldap_id[$config['attr_mail']];
+				foreach ( $ldap_temp as $attr ) {
+					if ( strstr($attr, '@') ) {
+						$domain = explode('@', $attr)[1];
+						if ( $domain && ! in_array( $domain, $config['ignore_domains']) ) {
+							$identity['email'] = $attr;
+						}
+					}
+				}
+				break;
+			case 'dn':
+				$ldap_temp = $ldap_id[$config['attr_local']];
+				$local = $ldap_temp[0];
+				if ( $config['non_domain_attr'] == 'skip' ) {
+					$stop = false;
+				} else {
+					$stop = true;
+				}
+				$domain = get_domain_name($ldap_id['dn'], $config['attr_dom'], $stop);
+				if ( $local && $domain && ! in_array($domain, $config['ignore_domains']) ) {
+					$identity['email'] = $local.'@'.$domain;
+					array_push($identities, $identity);
+				}
+				break;
+			case 'memberof':
+				$ldap_temp = $ldap_id[$config['attr_local']];
+				$local = $ldap_temp[0];
+				if ( $config['non_domain_attr'] == 'skip' ) {
+					$stop = false;
+				} else {
+					$stop = true;
+				}
+				$ldap_temp = $ldap_id['memberof'];
+				foreach ( $ldap_temp as $memberof ) {
+					$domain = get_domain_name($memberof, $config['attr_dom'], $stop);
+					if ( $local && $domain && ! in_array($domain, $config['ignore_domains']) ) {
+						$identity['email'] = $local.'@'.$domain;
+						array_push($identities, $identity);
+					}
+				}
+				break;
+			case 'static':
+				$ldap_temp = $ldap_id[$config['attr_local']];
+				$local = $ldap_temp[0];
+				if ( $local && $config['domain_static'] && ! in_array($config['domain_static'], $config['ignore_domains']) ) {
+					$identity['email'] = $local.'@'.$config['domain_static'];
+					array_push($identities, $identity);
+				}
+				break;
+		}
+		return $identities;
+	}
+
+	function get_ldap_identities($con, $login, $config, $dn) {
+		$base_dn = $config['base_dn'];
+		$filter  = $config['filter'];
+		$fields  = array();
+		$bound   = false;
+		$result  = null;
+		$entries = array();
+
+		// Prepare LDAP query base DN
+		$base_dn = str_replace('%login', $login['login'], $base_dn);
+		$base_dn = str_replace('%local', $login['local'], $base_dn);
+		$base_dn = str_replace('%domain', $login['domain'], $base_dn);
+		$base_dn = str_replace('%email', $login['email'], $base_dn);
+		$base_dn = str_replace('%dn', $dn, $base_dn);
+		$base_dn = str_replace('%%', '%', $base_dn);
+
+		// Prepare LDAP query filter
+		$filter = str_replace('%login', $login['login'], $filter);
+		$filter = str_replace('%local', $login['local'], $filter);
+		$filter = str_replace('%domain', $login['domain'], $filter);
+		$filter = str_replace('%email', $login['email'], $filter);
+		$filter = str_replace('%dn', $dn, $filter);
+		$filter = str_replace('%%', '%', $filter);
+
+		// Prepare LDAP query attributes
+		if ( $config['attr_mail'] ) {
+			array_push($fields, $config['attr_mail']);
+		}
+		if ( $config['attr_local'] ) {
+			array_push($fields, $config['attr_local']);
+		}
+		if ( $config['attr_dom'] ) {
+			array_push($fields, $config['attr_dom']);
+		}
+		if ( $config['attr_name'] ) {
+			array_push($fields, $config['attr_name']);
+		}
+		if ( $config['attr_org'] ) {
+			array_push($fields, $config['attr_org']);
+		}
+		if ( $config['attr_reply'] ) {
+			array_push($fields, $config['attr_reply']);
+		}
+		if ( $config['attr_bcc'] ) {
+			array_push($fields, $config['attr_bcc']);
+		}
+		if ( $config['attr_sig'] ) {
+			array_push($fields, $config['attr_sig']);
+		}
+		if ( $config['mail_by'] == 'memberof' ) {
+			array_push($fields, 'memberof');
+		}
+
+		// Bind to server
+		if ( $config['bind_dn'] ){
+			$bound = ldap_bind($con, $config['bind_dn'], $config['bind_pw']);
+		} else {
+			$bound = ldap_bind($con);
+                }
+
+		if ( ! $bound ) {
+			throw new Exception(sprintf("Bind to server '%s' failed. Con: (%s), Error: (%s)", $this->cfg_ldap['server'], $con, ldap_errno($con)));
+		}
+
+		$result = ldap_search($con, $base_dn, $filter, $fields, 0, 0, 0, $config['deref']);
+
+		if ( $result ) {
+			$entries = ldap_get_entries($con, $result);
+		}
+
+		ldap_close($con);
+
+		foreach ( $entries as $entry ) {
+			$ids = get_ids_from_obj($entry, $config);
+			foreach ( $ids as $id ) {
+				array_push($identities, $id);
+			}
+		}
+
+		return $identities;
+	}
+
+	function fetch_identities($login) {
+		$users      = array();
+		$user       = array();
+		$aliases    = array();
+		$alias      = array();
+		$identities = array();
+
+		$users = get_ldap_identities($this->ldap_con, $login, $this->cfg_user, '');
+
+		if ( $identities['count'] = 0 ) {
+			throw new Exception(sprintf("User '%s' not found.", $login['login']));
+		}
+
+		foreach ( $users as $user ) {
+			array_push($identities, $user);
+			$aliases = get_ldap_identities($this->ldap_con, $login, $this->cfg_alias, $user['dn']);
+			foreach ( $aliases as $alias ) {
+				array_push($identities, $alias);
+			}
+		}
+
+		return $identities;
+	}
+
+	function sync_identities_db($identities) {
+		$db_identities = array();
+		$db_identity   = array();
+		$identity      = array();
+		$key           = '';
+		$value         = '';
+		$in_db         = false;
+		$in_ldap       = false;
+
+		if ( count($identities) > 0 && $db_identities = $this->rc_user->list_identities() ) {
+
+			# Check which identities not yet contained in the database
+			foreach ( $identities as $identity ) {
+				$in_db = false;
+
+				foreach ( $db_identities as $db_identity ) {
+					# email is our only comparison parameter
+					if( $db_identity['email'] == $identity['email'] ) {
+						if ( $this->cfg_update['update_existing'] ) {
+							if ( ! $this->cfg_update['update_empty_fields']) {
+								foreach ($identity as $key => $value) {
+									if ( empty($identity[$key]) ) {
+										unset($identity[$key]);
+									}
+								}
+							}
+							$this->rc_user->update_identity ( $db_identity['identity_id'], $identity );
+						}
+						$in_db = true;
+						break;
+					}
+				}
+
+				if( !$in_db ) {
+					$this->rc_user->insert_identity( $identity );
+				}
+			}
+
+			# Check which identities are available in database but nut in LDAP and delete those
+			foreach ( $db_identities as $db_identity ) {
+				$in_ldap = false;
+
+				foreach ( $identities as $identity ) {
+					# email is our only comparison parameter
+					if( $db_identity['email'] == $identity['email'] ) {
+						$in_ldap = true;
+						break;
+					}
+				}
+
+				# If this identity does not exist in LDAP, delete it from database
+				if( !$in_ldap ) {
+					$this->rc_user->delete_identity($db_identity['identity_id']);
+				}
+			}
+		}
+	}
+
+// ---------- Main functions
+	// Plugin initialization
+	function init() {
+		try {
+			write_log('ldapAliasSync', 'Initialising');
+
+			// Load general roundcube config settings
+			$this->load_config('config.inc.php');
+			$this->app = rcmail::get_instance();
+
+			// Load plugin config settings
+			$this->config = $this->app->config->get('ldapAliasSync');
+
+			$this->cfg_ldap	  = check_ldap_config($this->config['ldap']);
+			$this->cfg_mail	  = check_mail_config($this->config['mail']);
+			$this->cfg_user	  = check_user_config($this->config['user_search']);
+			$this->cfg_alias  = check_alias_config($this->config['alias_search']);
+			$this->cfg_update = check_update_config($this->config['update']);
+
+			$this->ldap_con  = initialize_ldap($this->cfg_ldap);
+
+			if ( is_resource($this->ldap_con) ) {
+				// register hook
+				$this->add_hook('login_after', array($this, 'login_after'));
+				$this->initialised = true;
+			}
+		} catch ( Exception $exc ) {
+			write_log('ldapAliasSync', 'Failed to initialise: '.$exc->getMessage());
+		}
+
+		if ( $this->initialised ) {
+			write_log('ldapAliasSync', 'Initialised');
+		}
+	}
+
+	/**
+	 * login_after
+	 *
+	 * See http://trac.roundcube.net/wiki/Plugin_Hooks
+	 * Arguments:
+	 * - URL parameters (e.g. task, action, etc.)
+	 * Return values:
+	 * - task
+	 * - action
+	 * - more URL parameters
+	 */
+	function login_after($args) {
+		$login = array();
+
+		try {
+			$this->rc_user = rcmail::get_instance()->user;
+			$login = get_login_info($this->rc_user->get_username('mail'), $this->cfg_mail);
+
+			$identities = fetch_identities($login);
+			sync_identities_db($identities);
+		} catch ( Exception $exc ) {
+			write_log('ldapAliasSync', 'Runtime error: '.$exc->getMessage());
+		}
+
+		return $args;
 	}
 }
 ?>
