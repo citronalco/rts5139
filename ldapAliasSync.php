@@ -72,7 +72,7 @@ class ldapAliasSync extends rcube_plugin {
 	 * - more URL parameters
 	 */
 	function login_after($args) {
-		private $login = array();
+		$login = array();
 
 		try {
 			$this->rc_user = rcmail::get_instance()->user;
@@ -88,11 +88,11 @@ class ldapAliasSync extends rcube_plugin {
 	}			
 
 	function fetch_identities($login) {
-		private users   = array();
-		private user    = array();
-		private aliases = array();
-		private alias   = array();
-		private identities = array();
+		users   = array();
+		user    = array();
+		aliases = array();
+		alias   = array();
+		identities = array();
 
 		$users = get_ldap_identities($this->ldap_con, $login, $this->cfg_user);
 
@@ -112,12 +112,12 @@ class ldapAliasSync extends rcube_plugin {
 	}
 
 	function get_ldap_identities($con, $login, $config, $dn = '') {
-		private $base_dn = $config['base_dn'];
-		private $filter  = $config['filter'];
-		private $fields  = array();
-		private $bound   = false;
-		private $result;
-		private $entries = array();
+		$base_dn = $config['base_dn'];
+		$filter  = $config['filter'];
+		$fields  = array();
+		$bound   = false;
+		$result  = null;
+		$entries = array();
 
 		// Prepare LDAP query base DN
 		$base_dn = str_replace('%login', $login['login'], $base_dn);
@@ -176,13 +176,13 @@ class ldapAliasSync extends rcube_plugin {
 	}
 
 	function get_ids_from_obj($ldap_id, $config) {
-		private $identity = array();
-		private $identities = array();
-		private $entries = array();
-		private $entry = array();
-		private $local;
-		private $domain;
-		private $break = true;
+		$identity   = array();
+		$identities = array();
+		$entries    = array();
+		$entry      = array();
+		$local      = '';
+		$domain     = '';
+		$break      = true;
 
 		// Get attributes
 		$identity['dn'] = $ldap_id['dn'];
@@ -267,13 +267,13 @@ class ldapAliasSync extends rcube_plugin {
 	}
 
 	function sync_identities_db($identities) {
-		private $db_identities;
-		private $db_identity;
-		private $identity;
-		private $key;
-		private $value;
-		private $in_db;
-		private $in_ldap;
+		$db_identities = array();
+		$db_identity   = array();
+		$identity      = array();
+		$key           = '';
+		$value         = '';
+		$in_db         = false;
+		$in_ldap       = false;
 
 		if ( count($identities) > 0 && $db_identities = $this->rc_user->list_identities() ) {
 
@@ -315,7 +315,7 @@ class ldapAliasSync extends rcube_plugin {
 						break;
 					}
 				}
-                            
+
 				# If this identity does not exist in LDAP, delete it from database
 				if( !$in_ldap ) {
 					$this->rc_user->delete_identity($db_identity['identity_id']);
@@ -326,8 +326,8 @@ class ldapAliasSync extends rcube_plugin {
 
 // ---------- Helper functions
 	function initialize_ldap($config) {
-		private $uri;
-		private $con;
+		$uri = '';
+		$con = null;
 
 		$uri = $config['scheme'].'://'.$config['server'].':'.$config['port'];
 
@@ -341,7 +341,7 @@ class ldapAliasSync extends rcube_plugin {
 	}
 
 	function get_login_info($info, $config) {
-		private $login = array();
+		$login = array();
 
 		$login['login'] = $info;
 
