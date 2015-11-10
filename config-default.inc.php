@@ -1,10 +1,10 @@
 <?php
 /*
- * Default configuration settings for ldapAliasSync roundcube plugin
+ * Default configuration settings for ldap-alias-sync roundcube plugin
  * Copy this file in config.inc.php, and override the values you need.
 */
 
-$rcmail_config['ldapAliasSync'] = array(
+$rcmail_config['ldap-alias-sync'] = array(
 	// Mail parameters
 	'mail' => array(
 		# Domain to use for LDAP searches (required, if 'replace_domain' is true)
