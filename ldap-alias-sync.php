@@ -314,11 +314,13 @@ class ldap-alias-sync extends rcube_plugin {
 				$ldap_temp = $ldap_id[$config['attr_mail']];
 				foreach ( $ldap_temp as $attr ) {
 					if ( strstr($attr, '@') ) {
-						$domain = explode('@', $attr)[1];
+						$domain_expl = explode('@', $attr);
+						$domain = $domain_expl[1];
 						if ( $domain && ! in_array( $domain, $config['ignore_domains']) ) {
 							$identity['email'] = $attr;
 							if ( ! $identity['name'] ) {
-								$identity['name'] = explode('@', $attr)[0];
+								$identity_expl = explode('@', $attr);
+								$identity['name'] = $identity_expl[0];
 							}
 							array_push($identities, $identity);
 							$this->log_debug("Found address ".$identity['email']);
