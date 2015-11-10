@@ -1,5 +1,5 @@
 {
-    "name": "dim-0/ldapAliasSync",
+    "name": "dim-0/ldap-alias-sync",
     "type": "roundcube-plugin",
     "license": "GPLv3",
     "repositories": [
