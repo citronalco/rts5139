@@ -7,7 +7,7 @@
  * Author: Lukas Mika <lukas.mika@web.de>
  * Licence: GPLv3. (See copying)
  */
-class ldap-alias-sync extends rcube_plugin {
+class ldapAliasSync extends rcube_plugin {
 // ---------- Global variables
 	// Internal variables
 	public  $task = 'login';
@@ -37,7 +37,7 @@ class ldap-alias-sync extends rcube_plugin {
 			$this->app = rcmail::get_instance();
 
 			// Load plugin config settings
-			$this->config = $this->app->config->get('ldap-alias-sync');
+			$this->config = $this->app->config->get('ldapAliasSync');
 
 			$this->cfg_ldap	   = $this->check_ldap_config($this->config['ldap']);
 			$this->cfg_mail	   = $this->check_mail_config($this->config['mail']);
@@ -468,24 +468,24 @@ class ldap-alias-sync extends rcube_plugin {
 	}
 
 	function log_error($msg) {
-		write_log('ldap-alias-sync', "ERROR: ".$msg);
+		write_log('ldapAliasSync', "ERROR: ".$msg);
 	}
 
 	function log_warning($msg) {
 		if ( $this->cfg_general['log_level'] >= 1 ) {
-			write_log('ldap-alias-sync', "WARNING: ".$msg);
+			write_log('ldapAliasSync', "WARNING: ".$msg);
 		}
 	}
 
 	function log_info($msg) {
 		if ( $this->cfg_general['log_level'] >= 2 ) {
-			write_log('ldap-alias-sync', "INFO: ".$msg);
+			write_log('ldapAliasSync', "INFO: ".$msg);
 		}
 	}
 
 	function log_debug($msg) {
 		if ( $this->cfg_general['log_level'] >= 3 ) {
-			write_log('ldap-alias-sync', "DEBUG: ".$msg);
+			write_log('ldapAliasSync', "DEBUG: ".$msg);
 		}
 	}
 
