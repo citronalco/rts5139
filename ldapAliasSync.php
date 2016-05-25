@@ -143,7 +143,7 @@ class ldapAliasSync extends rcube_plugin {
 				$login['domain'] = $config['search_domain'];
 			}
 		} else {
-			$login['local'] = $login;
+			$login['local'] = $info;
 
 			if ( $config['search_domain'] ) {
 				$login['domain'] = $config['search_domain'];
