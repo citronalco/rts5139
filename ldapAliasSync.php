@@ -312,6 +312,7 @@ class ldapAliasSync extends rcube_plugin {
 		switch ( $config['mail_by'] ) {
 			case 'attribute':
 				$ldap_temp = $ldap_id[$config['attr_mail']];
+				$ldap_temp = is_array($ldap_temp) ? $ldap_temp : array();
 				foreach ( $ldap_temp as $attr ) {
 					if ( strstr($attr, '@') ) {
 						$domain_expl = explode('@', $attr);
@@ -330,6 +331,7 @@ class ldapAliasSync extends rcube_plugin {
 				break;
 			case 'dn':
 				$ldap_temp = $ldap_id[$config['attr_local']];
+				$ldap_temp = is_array($ldap_temp) ? $ldap_temp : array();
 				$local = $ldap_temp[0];
 				if ( $config['non_domain_attr'] == 'skip' ) {
 					$stop = false;
@@ -348,6 +350,7 @@ class ldapAliasSync extends rcube_plugin {
 				break;
 			case 'memberof':
 				$ldap_temp = $ldap_id[$config['attr_local']];
+				$ldap_temp = is_array($ldap_temp) ? $ldap_temp : array();
 				$local = $ldap_temp[0];
 				if ( $config['non_domain_attr'] == 'skip' ) {
 					$stop = false;
@@ -369,6 +372,7 @@ class ldapAliasSync extends rcube_plugin {
 				break;
 			case 'static':
 				$ldap_temp = $ldap_id[$config['attr_local']];
+				$ldap_temp = is_array($ldap_temp) ? $ldap_temp : array();
 				$local = $ldap_temp[0];
 				if ( $local && $config['domain_static'] && ! in_array($config['domain_static'], $config['ignore_domains']) ) {
 					$identity['email'] = $local.'@'.$config['domain_static'];
