@@ -472,24 +472,24 @@ class ldapAliasSync extends rcube_plugin {
 	}
 
 	function log_error($msg) {
-		write_log('ldapAliasSync', "ERROR: ".$msg);
+		rcmail::write_log('ldapAliasSync', "ERROR: ".$msg);
 	}
 
 	function log_warning($msg) {
 		if ( $this->cfg_general['log_level'] >= 1 ) {
-			write_log('ldapAliasSync', "WARNING: ".$msg);
+			rcmail::write_log('ldapAliasSync', "WARNING: ".$msg);
 		}
 	}
 
 	function log_info($msg) {
 		if ( $this->cfg_general['log_level'] >= 2 ) {
-			write_log('ldapAliasSync', "INFO: ".$msg);
+			rcmail::write_log('ldapAliasSync', "INFO: ".$msg);
 		}
 	}
 
 	function log_debug($msg) {
 		if ( $this->cfg_general['log_level'] >= 3 ) {
-			write_log('ldapAliasSync', "DEBUG: ".$msg);
+			rcmail::write_log('ldapAliasSync', "DEBUG: ".$msg);
 		}
 	}
 
