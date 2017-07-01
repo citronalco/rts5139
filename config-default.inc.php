@@ -40,6 +40,12 @@ $rcmail_config['ldapAliasSync'] = array(
 		# Default: 'localhost'
 		#'server' => 'localhost',
 
+		# LDAP server URI (optional)
+		# You could also directly specify LDAP URI of your server(s). Multiple LDAP URI
+		# could be specify separated by space.
+		# Default: False
+		#'uri'    => false,
+
 		# LDAP server port (optional)
 		# Default: '389'
 		#'port' => '389',

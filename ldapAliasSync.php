@@ -101,7 +101,12 @@ class ldapAliasSync extends rcube_plugin {
 		$uri = '';
 		$con = null;
 
-		$uri = $config['scheme'].'://'.$config['server'].':'.$config['port'];
+		if (isset($config['uri']) && $config['uri']) {
+			$uri = $config['uri'];
+		}
+		else {
+			$uri = $config['scheme'].'://'.$config['server'].':'.$config['port'];
+		}
 
 		$con = ldap_connect($uri);
 
